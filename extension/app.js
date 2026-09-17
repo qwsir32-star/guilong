@@ -601,9 +601,13 @@ function resolveSiteIcon(site, label) {
 /**
  * faviconUrlFor(url, size) — 图标地址
  *
- * 走 MV3 自带的 _favicon 端点：本地缓存、不发网络请求、不受墙影响。
- * 需要一个 favicon 权限，已在 manifest.json 里声明。
- * 读不到时会退到 google s2（见 handleFaviconError），再读不到就露出底下的首字母色块。
+ * 走 MV3 自带的 _favicon 端点：读的是**浏览器本地**的图标缓存，不发网络请求、
+ * 不受墙影响。需要一个 favicon 权限，已在 manifest.json 里声明。
+ *
+ * 注意它「读不到」的两种表现完全不同：
+ *   - 真出错（比如 URL 压根不合法）→ 图片 onerror，退到 google s2，再退首字母色块
+ *   - 本地没有这个站的缓存 → **返回一张默认地球图，不报错**
+ * 第二种才是「有的网站怎么没有图标」的常见原因，靠 dropIfDefaultFavicon 处理。
  */
 function faviconUrlFor(url, size = 32) {
   return `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(url)}&size=${size}`;
@@ -635,6 +639,10 @@ function handleFaviconError(img) {
  *
  * 渲染完同步调用即可：innerHTML 只是把 src 排进加载队列，图片的 error 事件
  * 一定在之后的宏任务里才触发，所以这里挂监听不会漏掉。
+ *
+ * 两条兜底路都要挂：
+ *   - 加载**出错** → onerror（见 handleFaviconError）
+ *   - 加载**成功但给的是张默认占位图** → dropIfDefaultFavicon
  */
 function wireFaviconFallbacks(root) {
   if (!root) return;
@@ -642,7 +650,99 @@ function wireFaviconFallbacks(root) {
     if (img.dataset.fbWired === '1') return;
     img.dataset.fbWired = '1';
     img.onerror = () => handleFaviconError(img);
+    dropIfDefaultFavicon(img);
   });
+}
+
+/* ---------------- 「这图标其实是张占位图」的识别 ----------------
+   Chrome 的 _favicon 端点在本地**没有**这个站的图标缓存时，不会返回 404，
+   而是返回一张默认的「地球」占位图（未加载完的标签页就是那张）。
+   所以 onerror 根本不会触发 —— 底下垫的首字母色块永远露不出来，
+   用户看到的是一个灰扑扑的地球，读起来就是「这个网站没有图标」。
+
+   唯一的办法是把图读进 canvas 比像素。_favicon 跟扩展页面同源，
+   不会被 canvas 的跨域保护打上 tainted 标记，getImageData 读得出来。
+
+   基准图的指纹是**运行时现求**的：拿一个必然不存在的域名去问一次 _favicon，
+   它返回什么就记下来当基准。这样 Chrome 换版本、换平台改动了这张占位图，
+   识别也不会失效 —— 不要去硬编码某张图的哈希。
+
+   读不出像素时一律当作「不知道」，保持现状不删图：宁可多显示一个地球，
+   也不要因为猜错而把真图标删掉。
+   ------------------------------------------------------------------ */
+
+const DEFAULT_FAVICON_PROBE = 'https://tab-out-no-such-site.invalid/';
+let   defaultFaviconSig     = null;   // Promise<string|null>，只求一次
+
+/**
+ * faviconSignature(source) — 给一张图算个便宜的内容指纹
+ * @param {string|HTMLImageElement} source  图片地址，或一张已经加载好的 <img>
+ * @returns {Promise<string|null>} 读不出来（未加载完 / tainted / 无尺寸）时给 null
+ */
+function faviconSignature(source) {
+  return new Promise(resolve => {
+    const isEl = source && typeof source !== 'string';
+    const img  = isEl ? source : new Image();
+
+    const read = () => {
+      try {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        if (!w || !h) return resolve(null);
+
+        const canvas = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        const data = ctx.getImageData(0, 0, w, h).data;
+        // FNV-1a。这里只需要「同一张图给出同一个值、不同图基本不会撞」，
+        // 不涉及安全，不需要抗碰撞的哈希。
+        let hash = 2166136261;
+        for (let i = 0; i < data.length; i += 4) {
+          hash = ((hash ^ data[i])     * 16777619) >>> 0;
+          hash = ((hash ^ data[i + 3]) * 16777619) >>> 0;   // 顺带带上 alpha
+        }
+        resolve(`${w}x${h}#${hash}`);
+      } catch (err) {
+        resolve(null);
+      }
+    };
+
+    if (isEl) {
+      // 已经在页面上的 <img>：加载完了就直接读，没完就等它
+      if (img.complete) return img.naturalWidth ? read() : resolve(null);
+      img.addEventListener('load',  read, () => resolve(null), { once: true });
+      img.addEventListener('error', () => resolve(null), { once: true });
+      return;
+    }
+
+    img.onload  = read;
+    img.onerror = () => resolve(null);
+    img.src     = source;
+  });
+}
+
+function getDefaultFaviconSignature() {
+  if (!defaultFaviconSig) {
+    defaultFaviconSig = faviconSignature(faviconUrlFor(DEFAULT_FAVICON_PROBE, 32));
+  }
+  return defaultFaviconSig;
+}
+
+/**
+ * dropIfDefaultFavicon(img) — _favicon 给的是默认占位图时，删掉它，
+ * 让底下的首字母色块露出来。onerror 那条路走不到这种情况（见上）。
+ */
+async function dropIfDefaultFavicon(img) {
+  const [sig, def] = await Promise.all([
+    faviconSignature(img),
+    getDefaultFaviconSignature(),
+  ]);
+  if (!sig || !def || sig !== def) return;
+  if (img.isConnected === false) return;   // 这中间已经被 onerror 删掉了
+  img.remove();
 }
 
 /** escapeAttr(str) — 塞进 HTML 属性/文本前的转义。topSites 的标题来自任意网页，必须转 */
@@ -1773,28 +1873,20 @@ function renderQuickSite(site) {
 }
 
 /**
- * openOrFocusSite(url)
+ * openQuickSite(url) — 站点条点击 = 永远新开一个标签页
  *
- * 站点条点击的语义是「到那个网站的入口去」。
- * 所以只认「同一个入口」的标签页（同 hostname 且同路径，见 sameEntryUrl）：
- *   - 这个入口已经开着 → 切过去，不重复开
- *   - 只开着这个站的其他页面（比如某个视频页、某个仓库页）→ 不算，新开入口
+ * **不要**在这里做「已经开着这个入口就切过去」。用户在站点条上点一个图标，
+ * 意思是「我要去这个站」，不是「帮我把那个已经开着的页面找出来」。
+ * 他之所以停在这个标签页上，就是因为这里是个落脚点；把它替掉、或者被丢去
+ * 一个早就忘了内容的页面，都不是他要的。要复用已开的页面，Chrome 的
+ * 地址栏和标签栏本来就能干这件事。
  *
- * 这里**不能**按 hostname 找。按 hostname 找是「关闭该站全部标签页」那类
- * 批量操作的语义，用在「去入口」上会把人已经打开的正文页当成入口切过去。
+ * 这也顺带绕开了之前那个坑：早先按 hostname 找「已开的该站标签页」，
+ * 会把该站某个视频页 / 仓库页当成入口切过去。按 hostname 匹配是
+ * 「关闭该站全部标签页」那类批量操作的语义，不能用在「去入口」上。
  */
-async function openOrFocusSite(url) {
+async function openQuickSite(url) {
   if (!url) return 'none';
-
-  const allTabs = await chrome.tabs.query({});
-  const match   = allTabs.find(t => t.url && sameEntryUrl(t.url, url));
-
-  if (match) {
-    await chrome.tabs.update(match.id, { active: true });
-    if (match.windowId != null) await chrome.windows.update(match.windowId, { focused: true });
-    return 'focused';
-  }
-
   await chrome.tabs.create({ url });
   return 'opened';
 }
@@ -1912,7 +2004,11 @@ function renderPinIconPreview() {
     (img ? `<img src="${escapeAttr(img)}" alt="">` : '');
 
   const imgEl = box.querySelector('img');
-  if (imgEl) imgEl.onerror = () => imgEl.remove();
+  if (imgEl) {
+    imgEl.onerror = () => imgEl.remove();
+    // 预览用的是同一套 favicon 来源，同样可能拿到 Chrome 那张默认地球图
+    dropIfDefaultFavicon(imgEl);
+  }
 }
 
 /**
@@ -2192,14 +2288,14 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
-  // ---- 常用站点：打开（该站已有标签页就切过去，没有才新开）----
+  // ---- 常用站点：打开（永远是开一个新的，不去复用已开的页面）----
   if (action === 'open-quick-site') {
     // 拖完手一松，浏览器还可能补一个 click，别让它把站点打开了
     if (Date.now() - siteDragEndedAt < 400) return;
 
     const url = actionEl.dataset.siteUrl;
     if (!url) return;
-    await openOrFocusSite(url);
+    await openQuickSite(url);
     return;
   }
 

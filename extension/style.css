@@ -92,19 +92,19 @@ header {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 2px;
+  gap: 6px;
 }
 
 .quick-sites-hint {
-  font-size: 12px;
+  font-size: 13px;
   font-style: italic;
   color: var(--muted);
-  padding: 14px 8px 14px 0;
+  padding: 16px 8px 16px 0;
 }
 
 .quick-site {
   position: relative;
-  width: 76px;
+  width: 96px;
   /* 拖拽排序时不要顺手把标签文字选中，蓝色选区会跟着鼠标走一路 */
   user-select: none;
   -webkit-user-select: none;
@@ -114,12 +114,12 @@ header {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   width: 100%;
-  padding: 8px 4px;
+  padding: 10px 4px;
   background: none;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   font-family: inherit;
   transition: background 0.15s;
@@ -131,9 +131,9 @@ header {
 
 .quick-site-icon {
   position: relative;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   background: var(--card-bg);
   border: 1px solid var(--warm-gray);
   display: flex;
@@ -145,7 +145,7 @@ header {
 /* 底下垫一层首字母。favicon 两条路都读不到时会被 onerror 删掉，露出这一层，
    不会出现「破图」图标。 */
 .quick-site-letter {
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 500;
   color: var(--muted);
 }
@@ -156,12 +156,12 @@ header {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 6px;
+  padding: 8px;
   background: var(--card-bg);
 }
 
 .quick-site-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   max-width: 100%;
   overflow: hidden;
@@ -173,14 +173,17 @@ header {
   color: var(--ink);
 }
 
-/* 右上角两个小工具按钮，hover 才出现。
-   同一个位置按类型放不同的第一个按钮：钉住的给「编辑」，自动的给「钉住」。 */
+/* 图标右上角两个小工具按钮，hover 才出现。
+   同一个位置按类型放不同的第一个按钮：钉住的给「编辑」，自动的给「钉住」。
+
+   尺寸从 17px 提到 24px（原来那个大小基本是「拿针点」的难度），
+   两个之间留 4px 空隙 —— 误触的根源不只是目标小，更是两个小目标挨得太近。 */
 .quick-site-tool {
   position: absolute;
-  top: 0;
-  right: 2px;
-  width: 17px;
-  height: 17px;
+  top: -3px;
+  right: 3px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -196,12 +199,12 @@ header {
 
 /* 第一个工具按钮（编辑 / 钉住）摆在 × 左边 */
 .quick-site-tool:not(.quick-site-remove) {
-  right: 21px;
+  right: 31px;
 }
 
 .quick-site-tool svg {
-  width: 10px;
-  height: 10px;
+  width: 13px;
+  height: 13px;
 }
 
 .quick-site:hover .quick-site-tool {
@@ -253,12 +256,12 @@ body.dragging-site .quick-site-open {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
-  width: 76px;
-  padding: 8px 4px;
+  gap: 8px;
+  width: 96px;
+  padding: 10px 4px;
   background: none;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   font-family: inherit;
   color: var(--muted);
@@ -271,16 +274,16 @@ body.dragging-site .quick-site-open {
 }
 
 .quick-site-add svg {
-  width: 34px;
-  height: 34px;
-  padding: 8px;
-  border-radius: 8px;
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border-radius: 10px;
   border: 1px dashed var(--warm-gray);
   background: var(--card-bg);
 }
 
 .quick-site-add-label {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* 手动钉住的表单 —— 点 ＋ 才展开。三行：链接 / 名称 / 图标 */
@@ -297,7 +300,7 @@ body.dragging-site .quick-site-open {
 }
 
 .pin-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--ink);
   margin-bottom: 2px;
@@ -306,13 +309,13 @@ body.dragging-site .quick-site-open {
 .pin-field {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .pin-field label {
-  width: 30px;
+  width: 36px;
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -320,10 +323,10 @@ body.dragging-site .quick-site-open {
   flex: 1;
   min-width: 0;
   font-family: inherit;
-  font-size: 12px;
-  padding: 5px 9px;
+  font-size: 13px;
+  padding: 7px 10px;
   border: 1px solid var(--warm-gray);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--paper);
   color: var(--ink);
   outline: none;
@@ -337,10 +340,10 @@ body.dragging-site .quick-site-open {
 /* 图标预览 —— 跟站点条里那个方块同一套观感，所见即所得 */
 .pin-icon-preview {
   position: relative;
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--paper);
   border: 1px solid var(--warm-gray);
   display: flex;
@@ -355,7 +358,7 @@ body.dragging-site .quick-site-open {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 5px;
+  padding: 7px;
   background: var(--paper);
 }
 
@@ -363,19 +366,19 @@ body.dragging-site .quick-site-open {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .pin-hint {
   flex: 1;
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--muted);
 }
 
 /* 拿文字当图标时（1-2 个字）要小一号，否则撑不下 */
 .quick-site-letter.is-text {
-  font-size: 12px;
+  font-size: 15px;
 }
 
 /* ---- Tab cleanup banner ---- */
