@@ -1167,11 +1167,11 @@ function timeAgo(dateStr) {
   const diffHours = Math.floor((now - then) / 3600000);
   const diffDays  = Math.floor((now - then) / 86400000);
 
-  if (diffMins < 1)   return 'just now';
-  if (diffMins < 60)  return diffMins + ' min ago';
-  if (diffHours < 24) return diffHours + ' hr' + (diffHours !== 1 ? 's' : '') + ' ago';
-  if (diffDays === 1) return 'yesterday';
-  return diffDays + ' days ago';
+  if (diffMins < 1)   return T('time.justNow');
+  if (diffMins < 60)  return T('time.minutesAgo', { n: diffMins });
+  if (diffHours < 24) return Tn('time.hourAgo', 'time.hoursAgo', diffHours);
+  if (diffDays === 1) return T('time.yesterday');
+  return T('time.daysAgo', { n: diffDays });
 }
 
 /**
@@ -1179,16 +1179,16 @@ function timeAgo(dateStr) {
  */
 function getGreeting() {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return T('greeting.morning');
+  if (hour < 17) return T('greeting.afternoon');
+  return T('greeting.evening');
 }
 
 /**
  * getDateDisplay() — "Friday, April 4, 2026"
  */
 function getDateDisplay() {
-  return new Date().toLocaleDateString('en-US', {
+  return new Date().toLocaleDateString(localeOf(), {
     weekday: 'long',
     year:    'numeric',
     month:   'long',
@@ -1292,7 +1292,10 @@ const FRIENDLY_DOMAINS = {
   'xiaohongshu.com':      '小红书',
   'www.xiaohongshu.com':  '小红书',
 
-  'local-files':          '本地文件',
+  // 这一条和上面那些不一样：它不是某个网站的名字，是 file:// 那批标签页的归类名，
+  // 属于**界面文案**而不是对照数据，所以跟着语言走。
+  // 上面 'B站' / 'GitHub' 那些是网站自己的名字，不翻译，也不进文案表。
+  'local-files':          T('section.localFiles'),
 };
 
 function friendlyDomain(hostname) {
@@ -1502,11 +1505,13 @@ function getRealTabs() {
 function checkTabOutDupes() {
   const tabOutTabs = openTabs.filter(t => t.isTabOut);
   const banner  = document.getElementById('tabOutDupeBanner');
-  const countEl = document.getElementById('tabOutDupeCount');
+  const textEl  = document.getElementById('tabOutDupeText');
   if (!banner) return;
 
   if (tabOutTabs.length > 1) {
-    if (countEl) countEl.textContent = tabOutTabs.length;
+    // 整句都从文案表来：中文和英文的语序不同，数字在句里的位置也不同，
+    // 所以不能只换数字、留着外面的英文壳子。数字由 {count} 套进 <strong>。
+    if (textEl) textEl.innerHTML = T('dupeBanner.text', { count: tabOutTabs.length });
     banner.style.display = 'flex';
   } else {
     banner.style.display = 'none';
@@ -1533,10 +1538,10 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
       ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" data-favicon>` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
-        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
+        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="${T('action.saveForLater')}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
-        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">
+        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="${T('action.closeThisTab')}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -1546,7 +1551,7 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
   return `
     <div class="page-chips-overflow" style="display:none">${hiddenChips}</div>
     <div class="page-chip page-chip-overflow clickable" data-action="expand-chips">
-      <span class="chip-text">+${hiddenTabs.length} more</span>
+      <span class="chip-text">${T('badge.more', { n: hiddenTabs.length })}</span>
     </div>`;
 }
 
@@ -1576,12 +1581,15 @@ function renderDomainCard(group) {
 
   const tabBadge = `<span class="open-tabs-badge">
     ${ICONS.tabs}
-    ${tabCount} tab${tabCount !== 1 ? 's' : ''} open
+    ${Tn('badge.tabOpen', 'badge.tabsOpen', tabCount)}
   </span>`;
 
+  // data-badge="dupes" 是给「关掉重复之后把这个徽章淡出」那段用的。
+  // 那里原来是靠 badge.textContent.includes('duplicate') 认的 —— **拿文案做逻辑判断，
+  // 文案一翻译就失效**，所以改成认结构（属性）。以后凡是这种地方都要这么改。
   const dupeBadge = hasDupes
-    ? `<span class="open-tabs-badge" style="color:var(--accent-amber);background:rgba(200,113,58,0.08);">
-        ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}
+    ? `<span class="open-tabs-badge" data-badge="dupes" style="color:var(--accent-amber);background:rgba(200,113,58,0.08);">
+        ${Tn('badge.duplicate', 'badge.duplicates', totalExtras)}
       </span>`
     : '';
 
@@ -1614,10 +1622,10 @@ function renderDomainCard(group) {
       ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" data-favicon>` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
-        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
+        <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="${T('action.saveForLater')}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>
         </button>
-        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="Close this tab">
+        <button class="chip-action chip-close" data-action="close-single-tab" data-tab-url="${safeUrl}" title="${T('action.closeThisTab')}">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -1627,14 +1635,14 @@ function renderDomainCard(group) {
   let actionsHtml = `
     <button class="action-btn close-tabs" data-action="close-domain-tabs" data-domain-id="${stableId}">
       ${ICONS.close}
-      Close all ${tabCount} tab${tabCount !== 1 ? 's' : ''}
+      ${Tn('action.closeAllTabsOne', 'action.closeAllTabs', tabCount)}
     </button>`;
 
   if (hasDupes) {
     const dupeUrlsEncoded = dupeUrls.map(([url]) => encodeURIComponent(url)).join(',');
     actionsHtml += `
       <button class="action-btn" data-action="dedup-keep-one" data-dupe-urls="${dupeUrlsEncoded}">
-        Close ${totalExtras} duplicate${totalExtras !== 1 ? 's' : ''}
+        ${T('action.closeDupes', { n: totalExtras })}
       </button>`;
   }
 
@@ -1643,7 +1651,7 @@ function renderDomainCard(group) {
       <div class="status-bar"></div>
       <div class="mission-content">
         <div class="mission-top">
-          <span class="mission-name">${isLanding ? 'Homepages' : (group.label || friendlyDomain(group.domain))}</span>
+          <span class="mission-name">${isLanding ? T('section.homepages') : (group.label || friendlyDomain(group.domain))}</span>
           ${tabBadge}
           ${dupeBadge}
         </div>
@@ -1652,7 +1660,7 @@ function renderDomainCard(group) {
       </div>
       <div class="mission-meta">
         <div class="mission-page-count">${tabCount}</div>
-        <div class="mission-page-label">tabs</div>
+        <div class="mission-page-label">${T('badge.tabsUnit')}</div>
       </div>
     </div>`;
 }
@@ -1694,7 +1702,7 @@ async function renderDeferredColumn() {
 
     // Render active checklist items
     if (active.length > 0) {
-      countEl.textContent = `${active.length} item${active.length !== 1 ? 's' : ''}`;
+      countEl.textContent = Tn('deferred.itemOne', 'deferred.items', active.length);
       list.innerHTML = active.map(item => renderDeferredItem(item)).join('');
       wireFaviconFallbacks(list);
       list.style.display = 'block';
@@ -1710,7 +1718,7 @@ async function renderDeferredColumn() {
       if (active.length > 0) {
         actionsEl.innerHTML = `
           <button class="action-btn save-tabs" data-action="open-all-saved">
-            ${ICONS.tabs} 全部打开 ${active.length} 个
+            ${ICONS.tabs} ${T('deferred.openAll', { n: active.length })}
           </button>`;
         actionsEl.style.display = 'flex';
       } else {
@@ -1758,7 +1766,7 @@ function renderDeferredItem(item) {
           <span>${ago}</span>
         </div>
       </div>
-      <button class="deferred-dismiss" data-action="dismiss-deferred" data-deferred-id="${item.id}" title="Dismiss">
+      <button class="deferred-dismiss" data-action="dismiss-deferred" data-deferred-id="${item.id}" title="${T('deferred.dismiss')}">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
       </button>
     </div>`;
@@ -1777,7 +1785,7 @@ function renderArchiveItem(item) {
         ${item.title || item.url}
       </a>
       <span class="archive-item-date">${ago}</span>
-      <button class="archive-delete" data-action="delete-archived" data-deferred-id="${item.id}" title="从归档中删除">
+      <button class="archive-delete" data-action="delete-archived" data-deferred-id="${item.id}" title="${T('archive.delete')}">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
       </button>
     </div>`;
@@ -1814,14 +1822,14 @@ async function renderQuickSites() {
   }
 
   const addTile = `
-    <button class="quick-site-add" data-action="toggle-pin-input" title="钉住一个网站">
+    <button class="quick-site-add" data-action="toggle-pin-input" title="${T('pin.addTitle')}">
       ${ICONS.plus}
-      <span class="quick-site-add-label">钉住</span>
+      <span class="quick-site-add-label">${T('pin.add')}</span>
     </button>`;
 
   if (sites.length === 0) {
     listEl.innerHTML =
-      `<span class="quick-sites-hint">把常用网站钉在这里，以后一点就到</span>` + addTile;
+      `<span class="quick-sites-hint">${T('pin.hintEmpty')}</span>` + addTile;
     return;
   }
 
@@ -1854,15 +1862,15 @@ function renderQuickSite(site) {
   // （自动项没有可编辑的东西，而用户想让它留在这一行就得先钉下来）。
   const primaryBtn = site.pinned
     ? `<button class="quick-site-tool" data-action="edit-pinned-site"
-               data-site-url="${safeUrl}" title="编辑">${ICONS.edit}</button>`
+               data-site-url="${safeUrl}" title="${T('pin.editTitle')}">${ICONS.edit}</button>`
     : `<button class="quick-site-tool" data-action="pin-auto-site"
-               data-site-url="${safeUrl}" title="钉住这个网站">${ICONS.pin}</button>`;
+               data-site-url="${safeUrl}" title="${T('pin.pinTitle')}">${ICONS.pin}</button>`;
 
   return `
     <div class="quick-site" data-site-url="${safeUrl}"${dragAttrs}>
       <button class="quick-site-open" data-action="open-quick-site"
               data-site-url="${safeUrl}"${dragAttrs}
-              title="${safeLabel} · 打开 ${safeUrl}">
+              title="${escapeAttr(T('pin.openTooltip', { label, url: site.url }))}">
         <span class="quick-site-icon">
           <span class="quick-site-letter${letter.length > 1 ? ' is-text' : ''}">${escapeAttr(letter)}</span>
           ${img ? `<img src="${escapeAttr(img)}" data-favicon${host ? ` data-host="${escapeAttr(host)}"` : ''} alt="">` : ''}
@@ -1873,7 +1881,7 @@ function renderQuickSite(site) {
       <button class="quick-site-tool quick-site-remove" data-action="remove-quick-site"
               data-site-url="${safeUrl}"
               data-site-pinned="${site.pinned ? '1' : '0'}"
-              title="${site.pinned ? '取消钉住' : '不再显示'}">
+              title="${site.pinned ? T('pin.unpinTitle') : T('pin.hideTitle')}">
         ${ICONS.close}
       </button>
     </div>`;
@@ -1950,14 +1958,14 @@ function openPinForm(entry) {
     const icoEl = document.getElementById('pinIconInput');
     if (icoEl) icoEl.value = entry.icon || '';
 
-    if (btn)     btn.textContent     = '保存';
-    if (titleEl) titleEl.textContent = '编辑这个入口';
+    if (btn)     btn.textContent     = T('pin.submitEdit');
+    if (titleEl) titleEl.textContent = T('pin.formTitleEdit');
 
     // 名称和图标都是用户已有的内容，只提示链接可以改
-    setPinHint('链接、名称、图标都能改。改了链接会把这一项指到新地址。');
+    setPinHint(T('pin.hintEdit'));
   } else {
-    if (btn)     btn.textContent     = '钉住';
-    if (titleEl) titleEl.textContent = '钉住一个网站';
+    if (btn)     btn.textContent     = T('pin.submitNew');
+    if (titleEl) titleEl.textContent = T('pin.formTitleNew');
   }
 
   renderPinIconPreview();
@@ -2041,7 +2049,7 @@ async function applyPinSuggestion() {
   const href = normalizeSiteUrl(raw);
   if (!href) {
     if (nameEl.dataset.touched !== '1') nameEl.value = '';
-    setPinHint('网址看起来不太对');
+    setPinHint(T('pin.badUrl'));
     renderPinIconPreview();
     return;
   }
@@ -2059,9 +2067,9 @@ async function applyPinSuggestion() {
   renderPinIconPreview();
 
   setPinHint(
-    suggestion.source === 'root'  ? '识别为网站首页，名称和图标都是自动抓的'
-  : suggestion.source === 'tab'   ? '识别为具体页面，已用它的网页标题当名称'
-  :                                 '识别为具体页面，建议改个名字，免得看起来像首页'
+    suggestion.source === 'root'  ? T('pin.sourceRoot')
+  : suggestion.source === 'tab'   ? T('pin.sourceTab')
+  :                                 T('pin.sourcePage')
   );
 }
 
@@ -2223,21 +2231,21 @@ async function renderStaticDashboard() {
   const openTabsActionsEl    = document.getElementById('openTabsActions');
 
   if (domainGroups.length > 0 && openTabsSection) {
-    if (openTabsSectionTitle) openTabsSectionTitle.textContent = 'Open tabs';
-    openTabsSectionCount.textContent = `${domainGroups.length} domain${domainGroups.length !== 1 ? 's' : ''}`;
+    if (openTabsSectionTitle) openTabsSectionTitle.textContent = T('section.openTabs');
+    openTabsSectionCount.textContent = Tn('badge.domain', 'badge.domains', domainGroups.length);
 
     // 批量操作按钮。原先「Close all」是塞在 count 那一行里的，现在三种批量动作
     // 一起挪到独立的一行，否则 nowrap 的 count 行在窄窗口下会挤爆。
     if (openTabsActionsEl) {
       openTabsActionsEl.innerHTML = `
         <button class="action-btn save-tabs" data-action="save-all-open-tabs" data-close-after="0">
-          ${ICONS.save} 全部存入
+          ${ICONS.save} ${T('action.saveAll')}
         </button>
         <button class="action-btn save-tabs" data-action="save-all-open-tabs" data-close-after="1">
-          ${ICONS.save} 存入并关闭
+          ${ICONS.save} ${T('action.saveAllAndClose')}
         </button>
         <button class="action-btn close-tabs" data-action="close-all-open-tabs">
-          ${ICONS.close} 关闭全部 ${realTabs.length} 个
+          ${ICONS.close} ${T('action.closeAllTabs', { n: realTabs.length })}
         </button>`;
       openTabsActionsEl.style.display = 'flex';
     }
@@ -2363,7 +2371,10 @@ async function runSearch(raw) {
 }
 
 async function renderDashboard() {
-  // 先把开关状态落到 DOM 上：站点条可能整个被关掉，那样连渲染都不用做
+  // 先把 index.html 里带 data-i18n 的静态文案填上（按钮、label、placeholder 那些）
+  applyStaticStrings();
+
+  // 再把开关状态落到 DOM 上：站点条可能整个被关掉，那样连渲染都不用做
   const prefs = await applyUiPrefs();
 
   // 光标尽早进去，别等下面那两步渲染完 —— 用户开了新标签页可能立刻就开始打字
@@ -2400,7 +2411,7 @@ document.addEventListener('click', async (e) => {
       banner.style.opacity = '0';
       setTimeout(() => { banner.style.display = 'none'; banner.style.opacity = '1'; }, 400);
     }
-    showToast('Closed extra Tab Out tabs');
+    showToast(T('toast.closedExtras'));
     return;
   }
 
@@ -2434,11 +2445,11 @@ document.addEventListener('click', async (e) => {
 
     if (actionEl.dataset.sitePinned === '1') {
       await unpinSite(url);
-      showToast('已取消钉住');
+      showToast(T('toast.unpinned'));
     } else {
       // 自动补进来的没有「钉住」可取消，只能记进隐藏名单，不然下次刷新又冒出来
       await hideTopSite(url);
-      showToast('不再显示这个站点');
+      showToast(T('toast.siteHidden'));
     }
     await renderQuickSites();
     return;
@@ -2472,11 +2483,11 @@ document.addEventListener('click', async (e) => {
   if (action === 'pin-auto-site') {
     const res = await promoteTopSite(actionEl.dataset.siteUrl);
     if (!res.ok) {
-      showToast(res.reason === 'duplicate' ? '这个入口已经钉住了' : '网址看起来不太对');
+      showToast(res.reason === 'duplicate' ? T('toast.alreadyPinned') : T('pin.badUrl'));
       return;
     }
     await renderQuickSites();
-    showToast('已钉住，现在可以拖动排序');
+    showToast(T('toast.pinnedCanDrag'));
     return;
   }
 
@@ -2490,7 +2501,7 @@ document.addEventListener('click', async (e) => {
 
     const href = normalizeSiteUrl(urlEl ? urlEl.value : '');
     if (!href) {
-      showToast('网址看起来不太对');
+      showToast(T('pin.badUrl'));
       return;
     }
 
@@ -2506,16 +2517,16 @@ document.addEventListener('click', async (e) => {
 
     if (!res.ok) {
       showToast(
-        res.reason === 'duplicate' ? '这个入口已经在上面了'
-      : res.reason === 'missing'   ? '这一项已经不在了'
-      :                              '网址看起来不太对'
+        res.reason === 'duplicate' ? T('toast.alreadyListed')
+      : res.reason === 'missing'   ? T('toast.itemGone')
+      :                              T('pin.badUrl')
       );
       return;
     }
 
     closePinForm();
     await renderQuickSites();
-    showToast(editingUrl ? '已保存' : '已钉住');
+    showToast(editingUrl ? T('toast.saved') : T('toast.pinned'));
     return;
   }
 
@@ -2577,7 +2588,7 @@ document.addEventListener('click', async (e) => {
     const statTabs = document.getElementById('statTabs');
     if (statTabs) statTabs.textContent = openTabs.length;
 
-    showToast('Tab closed');
+    showToast(T('toast.tabClosed'));
     return;
   }
 
@@ -2593,7 +2604,7 @@ document.addEventListener('click', async (e) => {
       await saveTabForLater({ url: tabUrl, title: tabTitle });
     } catch (err) {
       console.error('[tab-out] Failed to save tab:', err);
-      showToast('Failed to save tab');
+      showToast(T('toast.saveFailed'));
       return;
     }
 
@@ -2612,7 +2623,7 @@ document.addEventListener('click', async (e) => {
       setTimeout(() => chip.remove(), 200);
     }
 
-    showToast('Saved for later');
+    showToast(T('toast.savedForLater'));
     await renderDeferredColumn();
     return;
   }
@@ -2674,14 +2685,14 @@ document.addEventListener('click', async (e) => {
         renderDeferredColumn(); // 归档清空时整块会自动收起来
       }, 300);
     }
-    showToast('已从归档删除');
+    showToast(T('toast.archivedDeleted'));
     return;
   }
 
   // ---- 批量：一键打开 saved for later 里所有未打勾的条目 ----
   if (action === 'open-all-saved') {
     const opened = await openAllSavedTabs();
-    showToast(opened === 0 ? '没有可打开的条目' : `已在后台打开 ${opened} 个标签页`);
+    showToast(opened === 0 ? T('toast.noItemsToOpen') : T('toast.openedInBackground', { n: opened }));
     return;
   }
 
@@ -2694,12 +2705,12 @@ document.addEventListener('click', async (e) => {
       result = await saveAllOpenTabs({ closeAfter });
     } catch (err) {
       console.error('[tab-out] 批量存入失败:', err);
-      showToast('批量存入失败');
+      showToast(T('toast.batchSaveFailed'));
       return;
     }
 
     if (result.added === 0 && result.closed === 0) {
-      showToast(result.skipped > 0 ? '这些标签页都已经在待办里了' : '没有可存入的标签页');
+      showToast(result.skipped > 0 ? T('toast.batchAllSkipped') : T('toast.nothingToSave'));
       return;
     }
 
@@ -2708,10 +2719,11 @@ document.addEventListener('click', async (e) => {
     else            await renderDeferredColumn();
 
     if (closeAfter) {
-      showToast(`已存入 ${result.added} 个、关闭 ${result.closed} 个标签页`);
+      showToast(T('toast.batchSavedAndClosed', { added: result.added, closed: result.closed }));
     } else {
       showToast(
-        `已存入 ${result.added} 个标签页` + (result.skipped ? `，跳过 ${result.skipped} 个重复` : '')
+        T('toast.batchSaved', { n: result.added })
+          + (result.skipped ? T('toast.batchSkipped', { n: result.skipped }) : '')
       );
     }
     return;
@@ -2748,8 +2760,8 @@ document.addEventListener('click', async (e) => {
     const idx = domainGroups.indexOf(group);
     if (idx !== -1) domainGroups.splice(idx, 1);
 
-    const groupLabel = group.domain === '__landing-pages__' ? 'Homepages' : (group.label || friendlyDomain(group.domain));
-    showToast(`Closed ${urls.length} tab${urls.length !== 1 ? 's' : ''} from ${groupLabel}`);
+    const groupLabel = group.domain === '__landing-pages__' ? T('section.homepages') : (group.label || friendlyDomain(group.domain));
+    showToast(Tn('toast.closedFromOne', 'toast.closedFrom', urls.length, { group: groupLabel }));
 
     const statTabs = document.getElementById('statTabs');
     if (statTabs) statTabs.textContent = openTabs.length;
@@ -2778,7 +2790,8 @@ document.addEventListener('click', async (e) => {
         setTimeout(() => b.remove(), 200);
       });
       card.querySelectorAll('.open-tabs-badge').forEach(badge => {
-        if (badge.textContent.includes('duplicate')) {
+        // 认 data-badge，不认文案 —— 文案要翻译，逻辑判断不能挂在它上面
+        if (badge.dataset.badge === 'dupes') {
           badge.style.transition = 'opacity 0.2s';
           badge.style.opacity    = '0';
           setTimeout(() => badge.remove(), 200);
@@ -2788,7 +2801,7 @@ document.addEventListener('click', async (e) => {
       card.classList.add('has-neutral-bar');
     }
 
-    showToast('Closed duplicates, kept one copy each');
+    showToast(T('toast.deduped'));
     return;
   }
 
@@ -2801,7 +2814,7 @@ document.addEventListener('click', async (e) => {
       const originalHtml = actionEl.innerHTML;
       actionEl.dataset.confirming = '1';
       actionEl.classList.add('confirming');
-      actionEl.innerHTML = `${ICONS.close}确认关闭 ${targets.length} 个标签页？再点一次`;
+      actionEl.innerHTML = `${ICONS.close}${T('toast.confirmCloseAll', { n: targets.length })}`;
 
       // 5 秒无操作自动复位，避免按钮一直挂在危险状态上
       setTimeout(() => {
@@ -2826,7 +2839,7 @@ document.addEventListener('click', async (e) => {
       animateCardOut(c);
     });
 
-    showToast(`已关闭 ${allUrls.length} 个标签页`);
+    showToast(T('toast.closedAll', { n: allUrls.length }));
     return;
   }
 });
@@ -2970,7 +2983,7 @@ document.addEventListener('drop', async (e) => {
   const moved = await movePinnedSite(from, target, after);
   if (moved) {
     await renderQuickSites();
-    showToast('已调整顺序');
+    showToast(T('toast.reordered'));
   }
 });
 
@@ -3012,7 +3025,7 @@ document.addEventListener('input', async (e) => {
     );
 
     archiveList.innerHTML = results.map(item => renderArchiveItem(item)).join('')
-      || '<div style="font-size:12px;color:var(--muted);padding:8px 0">No results</div>';
+      || `<div style="font-size:12px;color:var(--muted);padding:8px 0">${T('archive.noResults')}</div>`;
   } catch (err) {
     console.warn('[tab-out] Archive search failed:', err);
   }
