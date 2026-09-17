@@ -15,7 +15,7 @@
 **1. 克隆仓库**
 
 ```bash
-git clone https://github.com/qwsir32-star/tab-out.git
+git clone https://github.com/qwsir32-star/guilong.git
 cd tab-out
 ```
 
