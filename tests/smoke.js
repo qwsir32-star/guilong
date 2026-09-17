@@ -962,6 +962,11 @@ function part9() {
   check('源码里没有残留旧品牌名 Tab Out', brandLeak, []);
   check('manifest 用的是新名字', MANIFEST.name.includes('归拢'), true);
   check('manifest 的 action 标题也是新名字', MANIFEST.action.default_title, '归拢');
+  /* 版本号守卫：它只有一个用处 —— 在 chrome://extensions 的卡片上告诉人
+     「我现在跑的是哪一版」，也就是「刚才那次重载到底成功没有」。
+     一旦它不合法或不见了，这个唯一的信号就没了。 */
+  check('manifest 有合法版本号（改完顺手 bump，它就是重载成功的信号）',
+    /^\d+\.\d+\.\d+$/.test(MANIFEST.version || ''), true);
   // 这条守卫是踩坑换来的：manifest 没有 key 时，Chrome 用**目录绝对路径**算扩展 ID，
   // 改个目录名就会换 ID → chrome.storage 里的用户数据全部读不到。
   // 删掉 key 不会有任何报错，只会静默丢数据，所以必须守住。
