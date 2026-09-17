@@ -2278,6 +2278,7 @@ async function renderStaticDashboard() {
 const UI_PREFS_DEFAULTS = {
   showQuickSites: true,   // 常用站点条
   showSearchBox:  true,   // 搜索框
+  showWeather:    true,   // 当地天气（默认地点见 DEFAULT_WEATHER_LOCATION）
 };
 
 /**
@@ -2308,6 +2309,10 @@ async function applyUiPrefs() {
 
   const searchBar = document.getElementById('searchBar');
   if (searchBar) searchBar.style.display = prefs.showSearchBox ? '' : 'none';
+
+  // 天气条同理：开关只管「露不露」。weatherLocation 和 weatherCache 原样留着，
+  // 关掉再打开，还是你之前选的那个城市，温度也不用重新等一次网络。
+  applyWeatherVisibility(prefs);
 
   // 开关自己的勾选状态也要跟上，否则重开页面时勾的位置和实际情况不符
   document.querySelectorAll('input[data-setting]').forEach(input => {
@@ -2407,8 +2412,478 @@ async function openShortcutSettings() {
 /* 用户去 Chrome 那边改完快捷键、切回这个标签页时，把显示刷新一下。
    少了这一步，他会一直看着打开面板那一刻的旧值，然后以为没设成功。 */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') renderShortcutSetting();
+  if (document.visibilityState !== 'visible') return;
+  renderShortcutSetting();
+  // 顺手刷一次天气：这个标签页可能开着挂了很久，回来时温度早变了。
+  renderWeather();
 });
+
+
+/* ----------------------------------------------------------------
+   当地天气（设置面板里的开关 + 城市选择）
+
+   ── 数据从哪来 ─────────────────────────────────────────────────
+   Open-Meteo。选它有三个理由，都是查过的：
+     · **免费且不要 API key**。要 key 的方案意味着每个用的人得自己配一个，
+       fork 出去还得替别人的额度负责，不适合一个开源小扩展。
+     · 响应头里带 `access-control-allow-origin: *`。所以扩展页可以直接
+       跨域取，manifest 里**一个 host_permissions 都不用加** ——
+       用户重载时不会突然多一个权限确认框。这条是实测出来的（带了
+       Origin 头问过），不是推测。代价是：哪天这个 CORS 头没了，这里会
+       静默失败，而不是报个错。所以失败路径必须做得干净（见 renderWeather）。
+     · 地理编码接口支持 language=zh，能直接拿回中文地名。
+
+   ── 拿不到数据时的行为（这条最重要）────────────────────────────
+   **不报错、不弹提示条、不删缓存。** 有旧数据显示旧的，没有就保持空白。
+   新标签页是最不该出现错误提示的地方 —— 断网、被墙、接口挂了，用户该
+   看到的只是「这里没有天气」，而不是一个他看不懂也修不了的红条。
+   ---------------------------------------------------------------- */
+
+const WEATHER_API_HOST     = 'https://api.open-meteo.com';
+const WEATHER_GEOCODE_HOST = 'https://geocoding-api.open-meteo.com';
+
+// 超过这个时长就回源刷新。缓存本身**永不主动删**：过期只是让它重新拉一次，
+// 拉不到就继续用这份旧的，总比空着强。
+const WEATHER_TTL_MS      = 20 * 60 * 1000;
+const WEATHER_TIMEOUT_MS  = 8000;
+const WEATHER_PLACE_LIMIT = 6;
+
+const WEATHER_LOCATION_KEY = 'weatherLocation';
+const WEATHER_CACHE_KEY    = 'weatherCache';
+
+/* 默认地点。**只存坐标，不存名字** —— 显示用的名字走文案表
+   weather.defaultCity，这样它跟着界面语言变（英文界面显示 Shanghai），
+   而不是卡死在中文里。 */
+const DEFAULT_WEATHER_LOCATION = { latitude: 31.22222, longitude: 121.45806 };
+
+/**
+ * 天气码 → 种别。Open-Meteo 用的是 WMO 那套数字码（0=晴、3=阴、61=雨…）。
+ *
+ * 归成 11 个种别，而不是把 28 个码原样显示出来：码本身用户看不懂，
+ * 而给每个码配一条中英文案，维护成本远大于收益。强度差别
+ * （毛毛雨 / 中雨 / 大雨）也一并抹平了 —— 那一行字没那么大地方，
+ * 而且「外面在下雨」这个信息量已经够决定要不要带伞。
+ */
+const WEATHER_CODE_KINDS = {
+  0: 'clear', 1: 'mostlyClear', 2: 'partly', 3: 'overcast',
+  45: 'fog', 48: 'fog',
+  51: 'drizzle', 53: 'drizzle', 55: 'drizzle', 56: 'drizzle', 57: 'drizzle',
+  61: 'rain', 63: 'rain', 65: 'rain', 66: 'rain', 67: 'rain',
+  71: 'snow', 73: 'snow', 75: 'snow', 77: 'snow',
+  80: 'showers', 81: 'showers', 82: 'showers',
+  85: 'snowShowers', 86: 'snowShowers',
+  95: 'storm', 96: 'storm', 99: 'storm',
+};
+
+/** 种别 → 文案词目 + 图标。图标只有 7 个，所以几个种别共用一张图 */
+const WEATHER_KINDS = {
+  clear:       { text: 'weather.clear',       icon: 'sun' },
+  mostlyClear: { text: 'weather.mostlyClear', icon: 'sun' },
+  partly:      { text: 'weather.partly',      icon: 'cloudSun' },
+  overcast:    { text: 'weather.overcast',    icon: 'cloud' },
+  fog:         { text: 'weather.fog',         icon: 'fog' },
+  drizzle:     { text: 'weather.drizzle',     icon: 'rain' },
+  rain:        { text: 'weather.rain',        icon: 'rain' },
+  showers:     { text: 'weather.showers',     icon: 'rain' },
+  snow:        { text: 'weather.snow',        icon: 'snow' },
+  snowShowers: { text: 'weather.snowShowers', icon: 'snow' },
+  storm:       { text: 'weather.storm',       icon: 'storm' },
+};
+
+/* 图标全部用圆 / 矩形 / 直线拼，**不抄弧线路径**：小尺寸下我要能靠自己
+   把这几个图元算出来长什么样，而不是赌一段没法验证的 d 属性是对的。
+   每一个都在 16px 真渲染出来看过（resvg）。
+   云有「抬起」和「放下」两版：下雨下雪打雷的用抬起那版，云往上挪 2px，
+   下面留出位置给雨丝 / 雪点 / 闪电，不然会跟底部挤成一坨。 */
+const weatherSvg = (inner) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">${inner}</svg>`;
+
+const weatherCloud = (dy = 0) =>
+  `<circle cx="14.1" cy="${10.9 + dy}" r="4.2"/>`
+  + `<circle cx="9.1" cy="${12.9 + dy}" r="3.2"/>`
+  + `<rect x="6.1" y="${12.9 + dy}" width="12" height="4.2" rx="2.1"/>`;
+
+const weatherStroke = (w, d) =>
+  `<path fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" d="${d}"/>`;
+
+const WEATHER_ICONS = {
+  sun:      weatherSvg(`<circle cx="12" cy="12" r="5"/>`
+            + weatherStroke(1.8, 'M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.55 1.55M17.05 17.05l1.55 1.55M5.4 18.6l1.55-1.55M17.05 6.95l1.55-1.55')),
+  cloudSun: weatherSvg(`<circle cx="8.2" cy="8.2" r="3.1"/>`
+            + weatherStroke(1.6, 'M8.2 2.4v1.6M2.4 8.2h1.6M4.15 4.15l1.1 1.1M12.25 4.15l-1.1 1.1')
+            + `<circle cx="15" cy="13.2" r="3.9"/><circle cx="10.4" cy="15" r="3"/><rect x="7.4" y="15" width="11.2" height="3.9" rx="1.95"/>`),
+  cloud:    weatherSvg(weatherCloud()),
+  fog:      weatherSvg(weatherCloud(-2) + weatherStroke(1.8, 'M7.3 18.4h9.4M8.8 21.6h6.4')),
+  rain:     weatherSvg(weatherCloud(-2) + weatherStroke(1.9, 'M9.4 18.6l-1 2.1M13.2 18.6l-1 2.1M17 18.6l-1 2.1')),
+  snow:     weatherSvg(weatherCloud(-2) + weatherStroke(2, 'M9.3 19.2h.01M13.1 19.2h.01M16.9 19.2h.01')),
+  storm:    weatherSvg(weatherCloud(-2) + `<path d="M13.4 16 9.5 20.9h2.9l-1.1 2.5 4.1-4.6h-2.9z"/>`),
+};
+
+/**
+ * 天气码 → 给人看的种别文案。认不出的码不报错，退回一个中性的说法 ——
+ * 接口哪天加个新码，页面上最差也只是显示「天气」，不会变成 undefined。
+ */
+function weatherText(code) {
+  const kind = WEATHER_CODE_KINDS[code];
+  const def  = kind && WEATHER_KINDS[kind];
+  return T(def ? def.text : 'weather.unknown');
+}
+
+/** 天气码 → 图标 SVG。认不出的码退回一朵云 */
+function weatherIcon(code) {
+  const kind = WEATHER_CODE_KINDS[code];
+  const def  = kind && WEATHER_KINDS[kind];
+  return WEATHER_ICONS[(def && def.icon) || 'cloud'] || WEATHER_ICONS.cloud;
+}
+
+/** 地理编码接口认 zh / en 这种两字母码，从界面语言推出来 */
+function weatherLangCode() {
+  return String(localeOf() || 'zh').split('-')[0];
+}
+
+/** 温度：取整 + 套模板。不是数字就返回空串（宁可空着，也不要显示 "NaN°"） */
+function formatTemperature(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '';
+  return T('weather.temp', { t: Math.round(value) });
+}
+
+/** 今天的最高 / 最低。缺任何一个就整条不显示 —— 只报一半比不报更让人困惑 */
+function formatWeatherRange(min, max) {
+  const ok = (v) => typeof v === 'number' && Number.isFinite(v);
+  if (!ok(min) || !ok(max)) return '';
+  return T('weather.range', { min: Math.round(min), max: Math.round(max) });
+}
+
+/**
+ * placeSubtitle(place) — 搜索结果里那行小字
+ *
+ * 地理编码接口对「上海」会同时给 name='上海'、admin1='上海市'、country='中国'。
+ * 直接拼就成了「上海 · 上海市 · 中国」，前两个根本是一回事。
+ * 所以 admin1 以 name 开头的就丢掉，只留真正有信息量的部分（省份 / 国家）。
+ */
+function placeSubtitle(place) {
+  const name    = String((place && place.name)    || '');
+  const admin1  = String((place && place.admin1)  || '');
+  const country = String((place && place.country) || '');
+  const parts   = [];
+  if (admin1 && !admin1.startsWith(name)) parts.push(admin1);
+  if (country && !parts.includes(country)) parts.push(country);
+  return parts.join(' · ');
+}
+
+/** 界面上显示的城市名。没选过就用默认那个，名字从文案表取 */
+function weatherCityLabel(loc) {
+  const name = (loc && typeof loc.name === 'string') ? loc.name.trim() : '';
+  return name || T('weather.defaultCity');
+}
+
+/**
+ * weatherShouldShow(prefs, ready) — 天气条到底露不露
+ *
+ * 抽成纯函数是为了**能测**：真机上「开关开没开」×「有没有画过」的组合
+ * 要在浏览器里一个个点出来太慢，但这三种组合都必须是对的。
+ * ready 是元素上的 dataset.ready，'1' 表示已经成功画过一次。
+ * **没画过就不露** —— 否则会先闪一个空盒子出来，新标签页上这一下特别扎眼。
+ */
+function weatherShouldShow(prefs, ready) {
+  return !!(prefs && prefs.showWeather && ready === '1');
+}
+
+/**
+ * 缓存还新不新鲜。age < 0（系统时间被往回调过）一律当过期：
+ * 拿「未来的」时间戳去算年龄会得出负数，那种缓存不可信，宁可重拉一次。
+ */
+function isWeatherCacheFresh(cache, now) {
+  if (!cache || typeof cache.at !== 'number' || !Number.isFinite(cache.at)) return false;
+  const t = (typeof now === 'number') ? now : Date.now();
+  const age = t - cache.at;
+  return age >= 0 && age < WEATHER_TTL_MS;
+}
+
+/**
+ * fetchJson(url) — 带超时的取 JSON
+ *
+ * **任何失败都回 null**：断网、被墙、超时、非 200、返回的不是 JSON，
+ * 全部归成同一件事「这次没拿到」。调用方因此只需要处理两种情况，
+ * 而不是给每种网络错误写一套分支 —— 反正对用户的含义是一样的。
+ */
+async function fetchJson(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WEATHER_TIMEOUT_MS);
+  try {
+    // no-store：新标签页不该显示 HTTP 缓存里那份几小时前的温度。
+    // 我们自己的缓存策略在 weatherCache 那边，比 HTTP 缓存精细。
+    const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Open-Meteo 的每日值是单元素数组，取不出来就当没有 */
+function firstNumber(maybeArray) {
+  return (Array.isArray(maybeArray) && typeof maybeArray[0] === 'number') ? maybeArray[0] : null;
+}
+
+/**
+ * fetchWeather(loc) — 拉一次实况
+ *
+ * 形状不对（没有 current.temperature_2m，或者它不是数字）一律当失败：
+ * 宁可什么都不显示，也不要画一个 0° 出来 —— 那比没有更糟，
+ * 因为它看起来是真的。
+ */
+async function fetchWeather(loc) {
+  const lat = Number(loc && loc.latitude);
+  const lon = Number(loc && loc.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  const url = `${WEATHER_API_HOST}/v1/forecast?latitude=${lat}&longitude=${lon}`
+    + '&current=temperature_2m,weather_code'
+    + '&daily=temperature_2m_max,temperature_2m_min'
+    + '&timezone=auto&forecast_days=1';
+
+  const json = await fetchJson(url);
+  const cur  = json && json.current;
+  if (!cur || typeof cur.temperature_2m !== 'number' || !Number.isFinite(cur.temperature_2m)) return null;
+
+  const day = (json && json.daily) || {};
+  return {
+    at:          Date.now(),
+    temperature: cur.temperature_2m,
+    weatherCode: cur.weather_code,
+    tempMax:     firstNumber(day.temperature_2m_max),
+    tempMin:     firstNumber(day.temperature_2m_min),
+  };
+}
+
+/**
+ * searchPlaces(query) — 按名字找城市
+ *
+ * 返回值把三件事分得很清楚，调用方要据此给不同的提示：
+ *   null  → 请求本身没成（断网 / 超时 / 接口挂了）
+ *   []    → 请求成了，但没这个地名
+ *   [...]  → 找到了
+ * 合并成 `[]` 是不行的：那两句话该说的东西完全不同 ——
+ * 一个让人换关键词，一个让人查网络。
+ *
+ * language 跟着界面语言走：中文界面搜「上海」拿回「上海」，英文界面
+ * 搜 shanghai 拿回 Shanghai。**城市名是接口数据，不进 strings.js** ——
+ * 判断标准还是那句：换语言时它该不该变？该变，而且它会自己变。
+ */
+async function searchPlaces(query) {
+  const q = String(query == null ? '' : query).trim();
+  if (!q) return [];
+
+  const url = `${WEATHER_GEOCODE_HOST}/v1/search?name=${encodeURIComponent(q)}`
+    + `&count=${WEATHER_PLACE_LIMIT}&language=${weatherLangCode()}&format=json`;
+
+  const json = await fetchJson(url);
+  if (!json) return null;   // 拿不到 ≠ 没找到
+
+  const list = Array.isArray(json.results) ? json.results : [];
+  return list
+    .filter(r => r && typeof r.latitude === 'number' && typeof r.longitude === 'number')
+    .map(r => ({
+      name:      String(r.name || ''),
+      latitude:  r.latitude,
+      longitude: r.longitude,
+      admin1:    String(r.admin1  || ''),
+      country:   String(r.country || ''),
+    }))
+    .filter(p => p.name);
+}
+
+async function getWeatherLocation() {
+  const { [WEATHER_LOCATION_KEY]: saved } = await chrome.storage.local.get(WEATHER_LOCATION_KEY);
+  if (saved && typeof saved.latitude === 'number' && typeof saved.longitude === 'number') return saved;
+  return { ...DEFAULT_WEATHER_LOCATION };
+}
+
+/**
+ * 记下选中的城市。
+ * .slice(0, 80) 是给外部数据上一道长度闸：地名再长也不该撑破那一行字，
+ * 更不该跟着一起存进 storage。
+ */
+async function setWeatherLocation(place) {
+  if (!place || typeof place.latitude !== 'number' || typeof place.longitude !== 'number') return;
+  await chrome.storage.local.set({
+    [WEATHER_LOCATION_KEY]: {
+      name:      String(place.name    || '').slice(0, 80),
+      latitude:  place.latitude,
+      longitude: place.longitude,
+      admin1:    String(place.admin1  || '').slice(0, 80),
+      country:   String(place.country || '').slice(0, 80),
+    },
+  });
+}
+
+async function getWeatherCache() {
+  const { [WEATHER_CACHE_KEY]: cache } = await chrome.storage.local.get(WEATHER_CACHE_KEY);
+  return (cache && typeof cache === 'object') ? cache : null;
+}
+
+/**
+ * paintWeather(el, data, loc) — 把一份天气数据画到条上
+ *
+ * 返回 true 表示真画出东西了。温度不可用就**整个不画**（返回 false）：
+ * 缓存里那条可能是别的版本写的，形状不一定对得上，而半画的状态
+ * （有图标没温度之类）比不画更难看。
+ */
+function paintWeather(el, data, loc) {
+  if (!el || !data) return false;
+  if (typeof data.temperature !== 'number' || !Number.isFinite(data.temperature)) return false;
+
+  const iconEl  = document.getElementById('weatherIcon');
+  const descEl  = document.getElementById('weatherDesc');
+  const tempEl  = document.getElementById('weatherTemp');
+  const cityEl  = document.getElementById('weatherCity');
+  const rangeEl = document.getElementById('weatherRange');
+
+  // 图标是我们自己代码里的常量，不是外部数据，所以 innerHTML 是安全的
+  if (iconEl) iconEl.innerHTML    = weatherIcon(data.weatherCode);
+  if (descEl) descEl.textContent  = weatherText(data.weatherCode);
+  if (tempEl) tempEl.textContent  = formatTemperature(data.temperature);
+  if (cityEl) cityEl.textContent  = weatherCityLabel(loc);
+
+  const range = formatWeatherRange(data.tempMin, data.tempMax);
+  if (rangeEl) {
+    rangeEl.textContent   = range;
+    rangeEl.style.display = range ? '' : 'none';
+  }
+
+  el.dataset.ready = '1';
+  return true;
+}
+
+/** 天气条露不露。applyUiPrefs 和 renderWeather 都走这里，免得两处判断走岔 */
+function applyWeatherVisibility(prefs) {
+  const el = document.getElementById('weather');
+  if (!el) return;
+  el.style.display = weatherShouldShow(prefs, el.dataset.ready) ? '' : 'none';
+}
+
+/**
+ * renderWeather() — 把天气条画出来
+ *
+ * 策略是**缓存优先**，因为新标签页会被反复打开，而这个页面上每次打开
+ * 都打一次网络是不可接受的：
+ *   1. 有缓存就先画（哪怕已过期）—— 页面一出现就有内容，不用等网络
+ *   2. 缓存还新鲜就直接收工，一次网络都不打
+ *   3. 过期才回源；拿到就覆盖缓存重画，拿不到就**什么都不做**
+ *
+ * 返回 'painted' | 'hidden' | 'unavailable'。让调用方能区分
+ * 「开关关着」和「真没拿到」—— 这两种情况下用户该被告诉的事情完全不同。
+ */
+async function renderWeather() {
+  const el = document.getElementById('weather');
+  if (!el) return 'unavailable';
+
+  try {
+    const prefs = await getUiPrefs();
+    applyWeatherVisibility(prefs);
+    if (!prefs.showWeather) return 'hidden';
+
+    const loc   = await getWeatherLocation();
+    const cache = await getWeatherCache();
+
+    if (cache && paintWeather(el, cache, loc)) applyWeatherVisibility(prefs);
+    const painted = el.dataset.ready === '1';
+    if (isWeatherCacheFresh(cache)) return painted ? 'painted' : 'unavailable';
+
+    const fresh = await fetchWeather(loc);
+    if (!fresh) return painted ? 'painted' : 'unavailable';
+
+    await chrome.storage.local.set({ [WEATHER_CACHE_KEY]: fresh });
+    paintWeather(el, fresh, loc);
+    applyWeatherVisibility(prefs);
+    return 'painted';
+  } catch (err) {
+    // storage 读不出来、扩展上下文失效之类。天气拉不到**不该**把新标签页搞崩，
+    // 所以这里只是咽下去 + 留一行日志。
+    console.warn('[guilong] 天气渲染失败:', err);
+    return 'unavailable';
+  }
+}
+
+/** 设置面板里那句「当前：上海」 */
+async function renderWeatherPlaceSetting() {
+  const el = document.getElementById('weatherPlaceCurrent');
+  if (!el) return;
+  try {
+    const loc = await getWeatherLocation();
+    el.textContent = T('settings.weatherPlace.current', { city: weatherCityLabel(loc) });
+  } catch (err) {
+    el.textContent = '';
+  }
+}
+
+
+/* ---------------- 城市搜索（设置面板里那一行） ----------------
+   上一次的结果存在这里，点选时按**下标**取回，而不是把城市名塞进
+   data- 属性里再读出来：塞进去就得转义，还得防着页面上的字符被反过来
+   当代码看。存下标没有这个问题。 */
+let lastPlaceResults = [];
+
+function hideWeatherResults() {
+  const box = document.getElementById('weatherResults');
+  if (!box) return;
+  box.style.display = 'none';
+  box.innerHTML = '';
+}
+
+function showWeatherHint(key) {
+  const box = document.getElementById('weatherResults');
+  if (!box) return;
+  box.innerHTML = `<div class="weather-result-hint">${escapeAttr(T(key))}</div>`;
+  box.style.display = '';
+}
+
+/**
+ * runPlaceSearch() — 拿输入框里的字去搜城市
+ *
+ * 「搜不动」和「没找到」给的是**不同**的提示，因为用户要采取的行动不同：
+ * 一个是换个关键词，一个是去查网络。searchPlaces 用 null / [] 把这两件事
+ * 分开了，这里照着翻译成提示条。
+ */
+async function runPlaceSearch() {
+  const input = document.getElementById('weatherPlaceInput');
+  if (!input) return;
+
+  const q = input.value.trim();
+  if (!q) { hideWeatherResults(); return; }
+
+  showWeatherHint('settings.weatherPlace.busy');
+
+  const results = await searchPlaces(q);
+  lastPlaceResults = results || [];
+
+  if (results === null)     { showWeatherHint('settings.weatherPlace.failed'); return; }
+  if (!results.length)      { showWeatherHint('settings.weatherPlace.empty');  return; }
+
+  const box = document.getElementById('weatherResults');
+  if (!box) return;
+
+  // 城市名来自外部接口，必须转义 —— 和 topSites 的标题是同一类东西
+  box.innerHTML = lastPlaceResults.map((p, i) =>
+    `<button type="button" class="weather-result" data-action="pick-weather-place" data-place-index="${i}">`
+    + `<span class="weather-result-name">${escapeAttr(p.name)}</span>`
+    + `<span class="weather-result-sub">${escapeAttr(placeSubtitle(p))}</span>`
+    + `</button>`).join('');
+  box.style.display = '';
+}
+
+// 城市输入框：回车即搜。它不在任何 <form> 里，所以不会被浏览器的
+// 默认提交行为带走 —— 但 preventDefault 还是留着，免得以后被套进表单。
+document.addEventListener('keydown', (e) => {
+  if (!e.target || e.target.id !== 'weatherPlaceInput') return;
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  runPlaceSearch().catch(err => console.warn('[guilong] 城市搜索失败:', err));
+});
+
 
 /**
  * focusSearchBox() — 把光标放进搜索框
@@ -2472,12 +2947,19 @@ async function renderDashboard() {
   // 快捷键那一行：读 Chrome 当前给它绑的组合（读不到就显示「未设置」）
   await renderShortcutSetting();
 
+  // 天气城市那一行：「当前：上海」
+  await renderWeatherPlaceSetting();
+
   // 光标尽早进去，别等下面那两步渲染完 —— 用户开了新标签页可能立刻就开始打字
   if (prefs.showSearchBox) focusSearchBox();
 
   // 站点条和打开的标签页无关，单独渲染一次就好，不用跟着仪表盘反复重画
   await renderQuickSites();
   await renderStaticDashboard();
+
+  // 天气放**最后**，而且故意不 await：它可能要等网络（最坏 8 秒超时），
+  // 主内容不该被它拖着。它自己内部会先用缓存画一遍，所以视觉上不慢。
+  renderWeather();
 }
 
 
@@ -2519,14 +3001,48 @@ document.addEventListener('click', async (e) => {
     const open = !panel.classList.contains('open');
     panel.classList.toggle('open', open);
     if (toggle) toggle.classList.toggle('open', open);
-    // 面板是刚展开的，顺手把快捷键的当前值读一次 —— 可能上次看之后用户改过了
-    if (open) await renderShortcutSetting();
+    // 面板是刚展开的，顺手把快捷键和天气城市都读一次 —— 上次看之后可能改过了
+    if (open) {
+      await renderShortcutSetting();
+      await renderWeatherPlaceSetting();
+    }
     return;
   }
 
   // ---- 快捷键：跳到 Chrome 自己的快捷键页面（我们改不了，只能送他过去）----
   if (action === 'change-shortcut') {
     await openShortcutSettings();
+    return;
+  }
+
+  // ---- 天气：搜城市 ----
+  if (action === 'search-weather-place') {
+    await runPlaceSearch();
+    return;
+  }
+
+  // ---- 天气：选中一个城市 ----
+  if (action === 'pick-weather-place') {
+    const idx   = Number(actionEl.dataset.placeIndex);
+    const place = Number.isInteger(idx) ? lastPlaceResults[idx] : null;
+    if (!place) { showToast(T('toast.itemGone')); return; }
+
+    await setWeatherLocation(place);
+    await renderWeatherPlaceSetting();
+    hideWeatherResults();
+    const placeInput = document.getElementById('weatherPlaceInput');
+    if (placeInput) placeInput.value = '';
+
+    /* ⚠️ 换城市**必须**把缓存丢掉：那份数据是上一个城市的。
+       不丢的话，页面会拿「上海的 26°」配着「北京」这个新名字显示出来 ——
+       看着一切正常，但它是错的。这类错最难发现，因为没有任何报错。 */
+    await chrome.storage.local.remove(WEATHER_CACHE_KEY);
+
+    // 只在「真没拿到」的时候说坏消息。开关关着时用户看不到天气条，
+    // 那时候报「没查到」只会让他一头雾水。
+    const status = await renderWeather();
+    showToast(T(status === 'unavailable' ? 'toast.weatherPlaceFailed' : 'toast.weatherPlaceSet',
+                 { city: place.name }));
     return;
   }
 
@@ -2998,6 +3514,11 @@ document.addEventListener('change', async (e) => {
   if (input.dataset.setting === 'showQuickSites') {
     if (!input.checked) closePinForm();   // 顺手收起展开的表单，免得下次打开还挂着
     await renderQuickSites();
+  }
+
+  // 天气同理：关着的时候一次都没画过，切回「开」得去补一次（可能要打网络）
+  if (input.dataset.setting === 'showWeather' && input.checked) {
+    await renderWeather();
   }
 });
 

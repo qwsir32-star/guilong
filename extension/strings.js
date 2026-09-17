@@ -78,6 +78,37 @@ const STRINGS = {
     /* ---- 按键名（只有空格需要翻译，字母数字照抄）---- */
     'key.space':                '空格',
 
+    /* ---- 天气 ----
+       天气**种别**是界面文案不是数据，所以进表。判断标准还是那句：
+       这条东西换语言时该不该变？（网站名那种不该变的才不进表）
+       注意：天气数据本身（25.5℃ 这种）是运行时从接口拿的，永远不进表。 */
+    'weather.defaultCity':     '上海',
+    'weather.temp':            '{t}°',
+    'weather.range':           '今天 {min}° / {max}°',
+    'weather.clear':           '晴',
+    'weather.mostlyClear':     '晴间多云',
+    'weather.partly':          '多云',
+    'weather.overcast':        '阴',
+    'weather.fog':             '雾',
+    'weather.drizzle':         '毛毛雨',
+    'weather.rain':            '雨',
+    'weather.snow':            '雪',
+    'weather.showers':         '阵雨',
+    'weather.snowShowers':     '阵雪',
+    'weather.storm':           '雷雨',
+    'weather.unknown':         '天气',
+
+    /* ---- 天气：设置面板里那两行 ---- */
+    'settings.weather.name':         '当地天气',
+    'settings.weather.desc':         '在新标签页显示所选城市的实时天气。关掉只是不显示，选过的城市不会丢。',
+    'settings.weatherPlace.name':    '天气城市',
+    'settings.weatherPlace.current': '当前：{city}',
+    'settings.weatherPlace.input':   '输入城市名，回车搜索',
+    'settings.weatherPlace.search':  '搜索',
+    'settings.weatherPlace.busy':    '搜索中…',
+    'settings.weatherPlace.empty':   '没找到这个城市，换个说法试试',
+    'settings.weatherPlace.failed':  '搜索失败，检查一下网络再试',
+
     /* ---- 区块标题 ---- */
     'section.openTabs':        '打开的标签页',
     'section.savedForLater':   '稍后再看',
@@ -178,6 +209,10 @@ const STRINGS = {
     'toast.closedAll':         '已关闭 {n} 个标签页',
     'toast.closedExtras':      '已关掉多余的归拢标签页',
     'toast.shortcutUnavailable': '没能打开 Chrome 的快捷键页面，请在地址栏手动输入 chrome://extensions/shortcuts',
+    // 选了城市但这一趟没查到天气时才提示。平时拉取失败是**静默**的：
+    // 新标签页上不该因为一次网络抖动就弹一个错误条。
+    'toast.weatherPlaceSet':   '天气城市已改为 {city}',
+    'toast.weatherPlaceFailed':'没能查到天气，稍后再试',
 
     /* ---- 「你开了好几个归拢」横幅。{count} 会被套进 <strong>，见 dupeBanner 的注释 ---- */
     'dupeBanner.text':         '你现在开着 <strong>{count}</strong> 个归拢标签页，只留当前这一个？',
@@ -215,6 +250,32 @@ const STRINGS = {
     'settings.shortcut.unset':  'Not set',
 
     'key.space':                'Space',
+
+    'weather.defaultCity':     'Shanghai',
+    'weather.temp':            '{t}°',
+    'weather.range':           'Today {min}° / {max}°',
+    'weather.clear':           'Clear',
+    'weather.mostlyClear':     'Mostly clear',
+    'weather.partly':          'Partly cloudy',
+    'weather.overcast':        'Overcast',
+    'weather.fog':             'Fog',
+    'weather.drizzle':         'Drizzle',
+    'weather.rain':            'Rain',
+    'weather.snow':            'Snow',
+    'weather.showers':         'Showers',
+    'weather.snowShowers':     'Snow showers',
+    'weather.storm':           'Thunderstorm',
+    'weather.unknown':         'Weather',
+
+    'settings.weather.name':         'Local weather',
+    'settings.weather.desc':         'Show live weather for the city you pick, right on the new tab. Turning this off only hides it — your city stays saved.',
+    'settings.weatherPlace.name':    'Weather city',
+    'settings.weatherPlace.current': 'Now showing: {city}',
+    'settings.weatherPlace.input':   'Type a city name and press Enter',
+    'settings.weatherPlace.search':  'Search',
+    'settings.weatherPlace.busy':    'Searching…',
+    'settings.weatherPlace.empty':   'No city matched — try another spelling',
+    'settings.weatherPlace.failed':  'Search failed — check your connection',
 
     'section.openTabs':        'Open tabs',
     'section.savedForLater':   'Saved for later',
@@ -305,6 +366,8 @@ const STRINGS = {
     'toast.closedAll':         'Closed {n} tabs',
     'toast.closedExtras':      'Closed extra Guilong tabs',
     'toast.shortcutUnavailable': "Couldn't open Chrome's shortcuts page — type chrome://extensions/shortcuts in the address bar",
+    'toast.weatherPlaceSet':   'Weather city set to {city}',
+    'toast.weatherPlaceFailed':"Couldn't load the weather — try again later",
 
     'dupeBanner.text':         'You have <strong>{count}</strong> Guilong tabs open. Keep just this one?',
     'dupeBanner.action':       'Close extras',

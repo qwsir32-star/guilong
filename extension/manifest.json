@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnLNt8DjcCdzqV4U0UOGmgzZ+4rZZWPaNvpjr6tnPuvAzOZlpjgcHPSTlUJ+THnYBDsRyM0Xcs5KoXk7BcHT2TcdDidUIGm4GihtWZDobdX2X5XC8IdWOQwLY2PjXlqbvm0fH2loCubBwHIKNgb4zlPip1eNEYMijfboZyvLXuk8rBDcthnB07CXKoenBD3o/Ih2gye1DOo3lUFnwgVAy+ImfkgnPLWCFqpKR6N95R5ZD/Jj//UTovdUCc9gJaTsQ3pNFRRb2YOhSvlKr53iRCeTYiOoa2k9fulrfrs8bKfKY7oSX4Uig9qLYqJOfDFWAlPxUf5YRc9l/lX+zbho7EQIDAQAB",
   "name": "归拢 · 新标签页",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "把你的标签页归拢到一处：按域名分组、一键关干净、没看完的先存起来。",
   "permissions": ["tabs", "activeTab", "storage", "topSites", "favicon", "search"],
   "chrome_url_overrides": { "newtab": "index.html" },

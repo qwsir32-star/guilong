@@ -56,6 +56,25 @@
   </header>
 
   <!-- ================================================================
+       天气条 —— 刻意放在页头**外面**
+
+       页头是三栏网格，三个孩子的 grid-column 全都是写死的（PART 8 有守卫）。
+       再往里塞一个会被 JS 显示/隐藏的网格孩子，就等于把那套「反复开关
+       搜索框、齿轮左右跳」的坑重新打开 —— display:none 会让元素退出网格，
+       自动排布随即把后面的兄弟往前顶。放在外面从结构上就没这个问题：
+       它压根不是网格的参与者。
+       初始 display:none：等真拿到数据才露，否则会先闪一个空盒子出来。
+       所有的字都由 renderWeather() 填，这里一个都不写死。
+       ================================================================ -->
+  <div class="weather" id="weather" style="display:none">
+    <span class="weather-icon" id="weatherIcon"></span>
+    <span class="weather-desc" id="weatherDesc"></span>
+    <span class="weather-temp" id="weatherTemp"></span>
+    <span class="weather-city" id="weatherCity"></span>
+    <span class="weather-range" id="weatherRange"></span>
+  </div>
+
+  <!-- ================================================================
        设置面板 —— 点页头的齿轮才展开
        每一项只控制「显示不显示」。关掉不会删任何数据：已经钉住的站点、
        隐藏名单都原样留在 storage 里，重新打开就回来了。
@@ -78,6 +97,33 @@
       </span>
       <input type="checkbox" class="setting-switch" data-setting="showSearchBox">
     </label>
+
+    <label class="setting-row">
+      <span class="setting-text">
+        <span class="setting-name" data-i18n="settings.weather.name"></span>
+        <span class="setting-desc" data-i18n="settings.weather.desc"></span>
+      </span>
+      <input type="checkbox" class="setting-switch" data-setting="showWeather">
+    </label>
+
+    <!-- 天气城市 —— 也是「非开关行」，所以用 div 而不是 label：
+         点整行不该有任何反应。
+         输入城市名 → 回车或点搜索 → 下面列出候选 → 点一个就定下来。
+         ⚠️ 结果列表 #weatherResults 是设置面板的直接孩子，**不是这一行的孩子**：
+         这一行是 flex 布局，列表塞进去会横着排成一条。 -->
+    <div class="setting-row setting-row-static">
+      <span class="setting-text">
+        <span class="setting-name" data-i18n="settings.weatherPlace.name"></span>
+        <!-- 「当前：上海」由 renderWeatherPlaceSetting() 填 -->
+        <span class="setting-desc" id="weatherPlaceCurrent"></span>
+      </span>
+      <input type="text" class="weather-place-input" id="weatherPlaceInput"
+             data-i18n-placeholder="settings.weatherPlace.input"
+             autocomplete="off" spellcheck="false">
+      <button class="action-btn" data-action="search-weather-place"
+              data-i18n="settings.weatherPlace.search"></button>
+    </div>
+    <div class="weather-results" id="weatherResults" style="display:none"></div>
 
     <!-- 快捷键 —— 这一行**不是开关**，所以用 div 而不是 label：
          点整行不该有任何反应。

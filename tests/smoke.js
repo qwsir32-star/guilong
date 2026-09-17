@@ -43,6 +43,15 @@ const code = fs.readFileSync(APP, 'utf8') + `
   faviconSignature, dropIfDefaultFavicon,
   getUiPrefs, setUiPref, applyUiPrefs, looksLikeUrl, runSearch, focusSearchBox,
   formatShortcut, formatShortcutParts, COMMAND_NAME, SHORTCUTS_URL,
+  weatherText, weatherIcon, formatTemperature, formatWeatherRange, placeSubtitle,
+  weatherCityLabel, weatherShouldShow, isWeatherCacheFresh, weatherLangCode,
+  fetchWeather, searchPlaces, runPlaceSearch, renderWeather,
+  getWeatherLocation, setWeatherLocation, getWeatherCache, paintWeather,
+  applyWeatherVisibility,
+  WEATHER_CODE_KINDS, WEATHER_KINDS, WEATHER_ICONS, WEATHER_TTL_MS,
+  WEATHER_LOCATION_KEY, WEATHER_CACHE_KEY, DEFAULT_WEATHER_LOCATION,
+  WEATHER_API_HOST, WEATHER_GEOCODE_HOST,
+  getLastPlaceResults: () => lastPlaceResults,
 };`;
 
 /* ---------------- 假 chrome / 假存储 ---------------- */
@@ -54,6 +63,18 @@ let   focused  = [];      // chrome.tabs.update 记录的激活操作
 let   topSites = [];      // chrome.topSites.get 的返回值
 
 const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+
+/* ---------------- 受控的假网络 ----------------
+   天气是这套代码里唯一会往外网伸手的地方。测试要能精确地造出
+   「正常」「HTTP 404」「返回的不是 JSON」「连都连不上」「超时」这几种情况，
+   因为它们的处理**必须**归到同一个结果上，否则页面上会出现
+   用户看不懂又修不了的错误状态。
+   fetchImpl 由每个用例自己换。 */
+let fetchCalls = [];
+let fetchImpl  = async () => ({ ok: true, json: async () => ({}) });
+
+const jsonResponse = (body, ok = true) => ({ ok, json: async () => body });
+const badResponse  = (ok = false)        => ({ ok, json: async () => { throw new Error('not json'); } });
 
 /* ---------------- 受控的假图片环境 ----------------
    用来验证「Chrome 给的是默认占位图，不是真图标」这条识别逻辑。
@@ -193,11 +214,19 @@ const sandbox = {
           return clone(store);
         },
         set: async obj => { Object.assign(store, clone(obj)); },
+        // 换城市时要丢掉旧城市的天气缓存（见 pick-weather-place）
+        remove: async key => { delete store[key]; },
       },
     },
   },
   window: {},
   globalThis: null,
+  // 天气模块要用的：AbortController 做超时，fetch 走上面那个受控实现
+  AbortController,
+  fetch: (url, opts) => {
+    fetchCalls.push({ url, opts });
+    return Promise.resolve().then(() => fetchImpl(url, opts));
+  },
 };
 sandbox.globalThis = sandbox;
 
@@ -705,20 +734,24 @@ async function part7() {
 
   /* --- 开关的读写 --- */
   delete store.uiPrefs;
-  check('没设置过时读默认值（两个都开）',
-    await T.getUiPrefs(), { showQuickSites: true, showSearchBox: true });
+  check('没设置过时读默认值（三个都开）',
+    await T.getUiPrefs(),
+    { showQuickSites: true, showSearchBox: true, showWeather: true });
 
   await T.setUiPref('showQuickSites', false);
   check('关掉站点条后读回来是关的', (await T.getUiPrefs()).showQuickSites, false);
 
-  // 老用户的存储里可能只有新增开关之前存的那一半键，缺的必须补默认值
+  // 老用户的存储里可能只有新增开关之前存的那一半键，缺的必须补默认值。
+  // 天气开关就是这么加进来的：加它之前存过设置的人，存储里没有 showWeather，
+  // 读到的必须是 true 而不是 undefined —— undefined 会让那个勾选框处于半死状态。
   store.uiPrefs = { showQuickSites: false };
   check('缺的键自动补默认值',
-    await T.getUiPrefs(), { showQuickSites: false, showSearchBox: true });
+    await T.getUiPrefs(),
+    { showQuickSites: false, showSearchBox: true, showWeather: true });
 
   await T.setUiPref('不存在的开关', false);
   check('未声明的开关不许写进去', Object.keys(await T.getUiPrefs()).sort(),
-    ['showQuickSites', 'showSearchBox']);
+    ['showQuickSites', 'showSearchBox', 'showWeather']);
 
   /* --- 开关落到 DOM 上 --- */
   domNodes.set('quickSites', fakeDomNode());
@@ -742,7 +775,8 @@ async function part7() {
   check('applyUiPrefs 不会自己抢光标',
     domNodes.get('searchInput').focusCount === undefined, true);
   check('applyUiPrefs 把读到的开关返回出来',
-    await T.applyUiPrefs(), { showQuickSites: false, showSearchBox: true });
+    await T.applyUiPrefs(),
+    { showQuickSites: false, showSearchBox: true, showWeather: true });
 
   T.focusSearchBox();
   check('focusSearchBox 把光标放进搜索框',
@@ -1097,6 +1131,312 @@ function part10() {
     /class="setting-row setting-row-static"/.test(HTML_SRC), true);
 }
 
+/* =================================================================
+   PART 11 — 当地天气
+
+   天气是这套代码里**唯一会往外网伸手**的地方，所以这里真正要守的不是
+   「能不能拿到数据」，而是**拿不到的时候会怎样**：
+
+     · 断网 / 被墙 / 超时 / 非 200 / 返回的不是 JSON / 形状不对
+       → 必须全部归到同一个结果「这次没拿到」。任何一条漏到画布上，
+         用户看到的就是一个 0° 或者 NaN° —— 那比什么都不显示更糟，
+         因为它看起来是真的。
+     · 缓存优先 → 新标签页一出现就有内容，不为了天气白等 8 秒超时。
+     · 换城市 → 必须丢掉旧城市的缓存，否则会拿上海的 26° 配北京的名字，
+         页面一切正常但是错的，而且不报任何错。
+
+   还有两条**结构 / 权限**守卫：天气条不许放进页头网格（见 PART 8），
+   以及这个功能不许偷偷给自己加 host_permissions。
+   ================================================================= */
+async function part11() {
+  console.log('\n[PART 11] 当地天气');
+
+  const APP_SRC  = fs.readFileSync(APP, 'utf8');
+  const HTML_SRC = srcOf('index.html');
+  const CSS_SRC  = fs.readFileSync(path.join(EXT, 'style.css'), 'utf8');
+  const MANIFEST = JSON.parse(srcOf('manifest.json'));
+
+  /* ---- 天气码 → 人话 ---- */
+  check('0 是晴',      T.weatherText(0),  '晴');
+  check('3 是阴',      T.weatherText(3),  '阴');
+  check('61 是雨',     T.weatherText(61), '雨');
+  check('95 是雷雨',   T.weatherText(95), '雷雨');
+  check('认不出的码退回中性说法、不炸', T.weatherText(9999), '天气');
+  check('undefined 也不炸',             T.weatherText(undefined), '天气');
+
+  /* 每个种别的文案词目都必须真的在文案表里。
+     这条守的是**打错词目名**这类错：T() 取不到只会把 key 原样返回，
+     页面上显示成 "weather.mostlyClear" 这种丑样子，而且不报错 ——
+     和「拿文案做逻辑判断」是同一类沉默失败。 */
+  check('每个种别的文案词目都在表里',
+    Object.values(T.WEATHER_KINDS).map(d => d.text).filter(k => !(k in S.STRINGS.zh)), []);
+  check('每个种别指的图标都真的存在',
+    Object.values(T.WEATHER_KINDS).map(d => d.icon).filter(k => !T.WEATHER_ICONS[k]), []);
+  check('每个图标都是完整的 SVG',
+    Object.values(T.WEATHER_ICONS).filter(s => !/^<svg[\s\S]*<\/svg>$/.test(s)), []);
+  check('认不出的码和阴天共用同一朵云（不至于露出空白）',
+    T.weatherIcon(9999), T.weatherIcon(3));
+
+  /* ---- 温度 / 区间 ---- */
+  check('25.5 四舍五入到 26', T.formatTemperature(25.5), '26°');
+  check('25.4 舍到 25',       T.formatTemperature(25.4), '25°');
+  check('负数也认',           T.formatTemperature(-3.6), '-4°');
+  // 0 度是合法温度，但它 falsy。用 `if (!temp)` 判空就会在零度那天把天气弄没。
+  check('0 度不能当成「没有」', T.formatTemperature(0), '0°');
+  check('NaN 当没有',      T.formatTemperature(NaN),  '');
+  check('null 当没有',     T.formatTemperature(null), '');
+  // 接口偶然给字符串时不能硬塞进模板，否则页面上是 "25.5°" 看着对、其实是脏数据
+  check('字符串当没有',    T.formatTemperature('26'), '');
+
+  check('区间套模板',       T.formatWeatherRange(23.8, 31.9), '今天 24° / 32°');
+  check('零度区间也认',     T.formatWeatherRange(0, 0), '今天 0° / 0°');
+  check('缺最高就整条不显示', T.formatWeatherRange(23.8, null), '');
+  check('缺最低就整条不显示', T.formatWeatherRange(undefined, 31.9), '');
+
+  /* ---- 搜索结果里那行小字 ---- */
+  check('上海：admin1 和名字重复就去掉',
+    T.placeSubtitle({ name: '上海', admin1: '上海市', country: '中国' }), '中国');
+  check('深圳：省份留着',
+    T.placeSubtitle({ name: '深圳', admin1: '广东省', country: '中国' }), '广东省 · 中国');
+  check('境外城市',
+    T.placeSubtitle({ name: 'London', admin1: 'England', country: 'United Kingdom' }),
+    'England · United Kingdom');
+  check('只剩国家', T.placeSubtitle({ name: 'X', country: '日本' }), '日本');
+  check('什么都没有 → 空串，不留一个孤零零的分隔点', T.placeSubtitle({}), '');
+  check('null 也不炸', T.placeSubtitle(null), '');
+
+  /* ---- 界面上显示的城市名 ---- */
+  check('选了城市就用它',       T.weatherCityLabel({ name: '北京' }), '北京');
+  check('没选过就用默认城市',   T.weatherCityLabel({}), '上海');
+  check('名字是空白算没选',     T.weatherCityLabel({ name: '   ' }), '上海');
+  check('名字不是字符串也不炸', T.weatherCityLabel({ name: 123 }), '上海');
+  // 默认城市名走文案表，所以换语言时它会变成 Shanghai，而不是卡在中文
+  check('默认城市名来自文案表', T.weatherCityLabel({}), S.T('weather.defaultCity'));
+
+  /* ---- 露不露。三种组合都要对 ---- */
+  check('开关开 + 画过 → 露',     T.weatherShouldShow({ showWeather: true  }, '1'), true);
+  check('开关关 + 画过 → 不露',   T.weatherShouldShow({ showWeather: false }, '1'), false);
+  // 没画过就露出去，会先闪一个空盒子 —— 新标签页上这一下特别扎眼
+  check('开关开 + 没画过 → 不露', T.weatherShouldShow({ showWeather: true }, undefined), false);
+  check('读不到开关 → 不露',      T.weatherShouldShow(null, '1'), false);
+
+  /* ---- 缓存新鲜度 ---- */
+  const TTL = T.WEATHER_TTL_MS;
+  const NOW = 1700000000000;
+  check('刚拉的 → 新鲜',            T.isWeatherCacheFresh({ at: NOW }, NOW), true);
+  check('差 1ms 到期 → 还新鲜',     T.isWeatherCacheFresh({ at: NOW - TTL + 1 }, NOW), true);
+  check('整好到期 → 过期',          T.isWeatherCacheFresh({ at: NOW - TTL }, NOW), false);
+  check('早过期了 → 过期',          T.isWeatherCacheFresh({ at: NOW - TTL * 3 }, NOW), false);
+  // 系统时间被往回调过时，年龄会算成负数。那种缓存不可信，宁可重拉一次。
+  check('时间戳在未来 → 当过期',    T.isWeatherCacheFresh({ at: NOW + 5000 }, NOW), false);
+  check('没有缓存 → 过期',          T.isWeatherCacheFresh(null, NOW), false);
+  check('缓存没有时间戳 → 过期',    T.isWeatherCacheFresh({ temperature: 20 }, NOW), false);
+
+  /* ---- 请求语言跟着界面走 ---- */
+  check('中文界面 → zh', T.weatherLangCode(), 'zh');
+  S.setLang('en');
+  check('英文界面 → en', T.weatherLangCode(), 'en');
+  S.setLang('zh');
+
+  /* ---- 拉实况：响应映射 ---- */
+  const SH = { latitude: 31.22222, longitude: 121.45806 };
+  const okBody = {
+    current: { temperature_2m: 25.5, weather_code: 3 },
+    daily:   { temperature_2m_max: [31.9], temperature_2m_min: [23.8] },
+  };
+
+  fetchCalls = [];
+  fetchImpl = async () => jsonResponse(okBody);
+  const w = await T.fetchWeather(SH);
+  check('正常响应 → 字段映射对了',
+    [w.temperature, w.weatherCode, w.tempMax, w.tempMin], [25.5, 3, 31.9, 23.8]);
+  check('  带上了时间戳（缓存要靠它判断新鲜度）', typeof w.at, 'number');
+  check('  地址带了坐标',
+    fetchCalls[0].url.includes('latitude=31.22222')
+      && fetchCalls[0].url.includes('longitude=121.45806'), true);
+  check('  要的就是实况 + 今天的最高最低',
+    fetchCalls[0].url.includes('current=temperature_2m,weather_code')
+      && fetchCalls[0].url.includes('daily=temperature_2m_max,temperature_2m_min')
+      && fetchCalls[0].url.includes('timezone=auto'), true);
+  check('  不让 HTTP 缓存插一脚（否则会显示几小时前的温度）',
+    fetchCalls[0].opts && fetchCalls[0].opts.cache, 'no-store');
+  check('  带上了超时用的 signal', !!(fetchCalls[0].opts && fetchCalls[0].opts.signal), true);
+
+  /* ---- 拉实况：六种失败必须都归到 null ---- */
+  const failures = [
+    ['HTTP 404',        async () => badResponse(false)],
+    ['返回的不是 JSON', async () => ({ ok: true, json: async () => { throw new Error('nope'); } })],
+    ['连都连不上',      async () => { throw new Error('network down'); }],
+    ['没有 current',    async () => jsonResponse({ daily: {} })],
+    ['温度是字符串',    async () => jsonResponse({ current: { temperature_2m: '25.5' } })],
+    ['温度是 NaN',      async () => jsonResponse({ current: { temperature_2m: NaN } })],
+  ];
+  for (const [label, impl] of failures) {
+    fetchImpl = impl;
+    check('失败 · ' + label + ' → null', await T.fetchWeather(SH), null);
+  }
+
+  fetchCalls = [];
+  fetchImpl = async () => jsonResponse(okBody);
+  const noCoord = await T.fetchWeather({ name: '没有坐标' });
+  check('没有坐标 → null，而且一次网络都不打', [noCoord, fetchCalls.length], [null, 0]);
+
+  fetchImpl = async () => jsonResponse({ current: { temperature_2m: 20 }, daily: {} });
+  const noDaily = await T.fetchWeather(SH);
+  check('只有实况、没有今日区间 → 温度照样给，区间留空（缺一半不该整条丢掉）',
+    [noDaily.temperature, noDaily.tempMin, noDaily.tempMax], [20, null, null]);
+
+  /* ---- 找城市：三种结果必须分得开 ---- */
+  const geoBody = { results: [
+    { name: '上海', latitude: 31.22, longitude: 121.46, admin1: '上海市', country: '中国' },
+    { name: '上海', latitude: 29.33, longitude: 121.06, admin1: '浙江',   country: '中国' },
+    { name: '没有坐标的', admin1: '某地' },
+  ] };
+
+  fetchCalls = [];
+  fetchImpl = async () => jsonResponse(geoBody);
+  const found = await T.searchPlaces('上海');
+  check('找到 → 丢掉没有坐标的条目，其余带回来', found.length, 2);
+  check('  第一条是对的', [found[0].name, found[0].latitude], ['上海', 31.22]);
+  check('  请求带了语言', fetchCalls[0].url.includes('language=zh'), true);
+  check('  中文地名做了 URL 编码', /name=%E4%B8%8A%E6%B5%B7/.test(fetchCalls[0].url), true);
+
+  // 真接口搜不到时就是 HTTP 200 + 一个只有 generationtime_ms 的 JSON（实测过）
+  fetchImpl = async () => jsonResponse({ generationtime_ms: 0.09 });
+  check('接口说没这个地名 → []（不是 null）', await T.searchPlaces('zqzz'), []);
+
+  fetchImpl = async () => { throw new Error('断了'); };
+  check('请求本身没成 → null（不是 []）', await T.searchPlaces('上海'), null);
+
+  fetchCalls = [];
+  fetchImpl = async () => jsonResponse(geoBody);
+  check('空查询 → []', await T.searchPlaces('   '), []);
+  check('  而且不打网络', fetchCalls.length, 0);
+
+  S.setLang('en');
+  fetchCalls = [];
+  await T.searchPlaces('shanghai');
+  check('切英文后地理编码语言也跟着变', fetchCalls[0].url.includes('language=en'), true);
+  S.setLang('zh');
+
+  /* ---- 结果列表渲染 ----
+     null / [] 必须在界面上翻成**不同**的两句话：一个让人换关键词，
+     一个让人查网络。合成一句就等于把用户的下一步动作抹掉了。 */
+  const resultsBox = fakeDomNode();
+  const placeInput = { value: '' };
+  domNodes.set('weatherResults', resultsBox);
+  domNodes.set('weatherPlaceInput', placeInput);
+
+  fetchImpl = async () => jsonResponse({ results: [
+    { name: '<img src=x onerror=alert(1)>', latitude: 1, longitude: 2, admin1: 'A', country: 'B' },
+  ] });
+  placeInput.value = 'x';
+  await T.runPlaceSearch();
+  // 城市名来自外部接口，和 topSites 的标题是同一类东西，必须转义
+  check('城市名必须转义（不许把外部字符串当 HTML 插进去）',
+    [resultsBox.innerHTML.includes('<img'), resultsBox.innerHTML.includes('&lt;img')], [false, true]);
+  check('结果按钮带上了点选用的下标',
+    /data-action="pick-weather-place" data-place-index="0"/.test(resultsBox.innerHTML), true);
+  check('  下标指向的结果真的存下来了',
+    [T.getLastPlaceResults().length, T.getLastPlaceResults()[0].latitude], [1, 1]);
+
+  fetchImpl = async () => jsonResponse({});
+  await T.runPlaceSearch();
+  check('没找到 → 提示「换个说法试试」',
+    resultsBox.innerHTML.includes(S.T('settings.weatherPlace.empty')), true);
+
+  fetchImpl = async () => { throw new Error('断了'); };
+  await T.runPlaceSearch();
+  check('搜不动 → 提示「检查一下网络」',
+    resultsBox.innerHTML.includes(S.T('settings.weatherPlace.failed')), true);
+
+  placeInput.value = '';
+  await T.runPlaceSearch();
+  check('输入是空的 → 收起结果区', resultsBox.style.display, 'none');
+
+  /* ---- 地点与缓存落盘 ---- */
+  delete store[T.WEATHER_LOCATION_KEY];
+  delete store[T.WEATHER_CACHE_KEY];
+  check('没选过 → 用默认地点', await T.getWeatherLocation(), T.DEFAULT_WEATHER_LOCATION);
+  check('没缓存 → null',       await T.getWeatherCache(), null);
+
+  await T.setWeatherLocation({ name: '北京', latitude: 39.9, longitude: 116.4, admin1: '北京市', country: '中国' });
+  const savedLoc = await T.getWeatherLocation();
+  check('选了城市 → 读回来是它', [savedLoc.name, savedLoc.latitude], ['北京', 39.9]);
+
+  // 半条数据比没有更糟：接受它就会拿一组不存在的坐标去问天气
+  await T.setWeatherLocation({ name: '没有坐标' });
+  check('缺坐标的城市不许写进去（保留上一个）',
+    (await T.getWeatherLocation()).name, '北京');
+
+  await T.setWeatherLocation({ name: 'x'.repeat(200), latitude: 1, longitude: 2 });
+  check('地名长度被截断（外部数据不许无限长）',
+    (await T.getWeatherLocation()).name.length, 80);
+
+  /* ---- 换城市必须丢缓存 ----
+     这条只能从源码上守：不丢的话页面会拿上一个城市的温度配新城市的名字，
+     看着完全正常，但是错的。这类错没有报错、没有视觉异常，最难发现。 */
+  const pickFrom  = APP_SRC.indexOf("action === 'pick-weather-place'");
+  const pickTo    = APP_SRC.indexOf("action === 'open-quick-site'");
+  const pickBlock = APP_SRC.slice(pickFrom, pickTo);
+  check('换城市时丢掉了旧城市的天气缓存',
+    /storage\.local\.remove\(WEATHER_CACHE_KEY\)/.test(pickBlock), true);
+  // 注意这里要显式判 > 0：找不到时 indexOf 返回 -1，而 -1 比谁都小，
+  // 光靠「谁在前」会把「整段代码都不见了」误判成通过。
+  const dropAt = pickBlock.indexOf('.remove(WEATHER_CACHE_KEY)');
+  check('  而且是先丢缓存、再重画（顺序反了会先把旧数据画上去）',
+    dropAt > 0 && dropAt < pickBlock.indexOf('renderWeather()'), true);
+
+  /* ---- 权限守卫 ----
+     天气是本项目第一个联网功能，但它**不需要任何新权限**：Open-Meteo 的
+     响应头带 access-control-allow-origin: *，扩展页可以直接跨域取（实测过）。
+     这条守卫是给以后的人看的 —— 一旦顺手加了 host_permissions，用户下次
+     重载就会被弹一个「读取您在所有网站上的数据」级别的确认框，
+     对一个只想看天气的功能来说代价太大。要加，得是深思熟虑，不能是顺手。 */
+  check('天气没有偷偷加 host_permissions（靠 CORS 走通就够）',
+    MANIFEST.host_permissions === undefined, true);
+  check('两个接口域名是写死的常量，不是拼在字符串中间',
+    /const WEATHER_API_HOST\s*=\s*'https:\/\/api\.open-meteo\.com'/.test(APP_SRC)
+      && /const WEATHER_GEOCODE_HOST\s*=\s*'https:\/\/geocoding-api\.open-meteo\.com'/.test(APP_SRC),
+    true);
+
+  /* ---- 拉不到时必须安静 ----
+     新标签页是最不该出现错误提示的地方：断网、被墙、接口挂了，用户该看到的
+     只是「这里没有天气」，而不是一个他看不懂也修不了的红条。 */
+  const rwBlock = APP_SRC.slice(APP_SRC.indexOf('async function renderWeather()'),
+                                APP_SRC.indexOf('async function renderWeatherPlaceSetting'));
+  check('拉不到时不弹提示条（失败要安静，只留 console 日志）',
+    /showToast/.test(rwBlock), false);
+
+  /* ---- 结构守卫 ----
+     天气条**不许**放进页头。页头是写死 grid-column 的三栏网格，再塞一个会被
+     显示/隐藏的孩子，就会把「开关搜索框、齿轮左右跳」那套坑重新打开
+     （见 PART 8）。靠 HTML 里的先后位置来守，是因为这正是当初踩坑的形状。 */
+  const headerClose  = HTML_SRC.indexOf('</header>');
+  const containerEnd = HTML_SRC.indexOf('<!-- end .container -->');
+  const weatherAt    = HTML_SRC.indexOf('id="weather"');
+  check('天气条在页头外面（不是页头网格的孩子）',
+    headerClose > 0 && weatherAt > headerClose && weatherAt < containerEnd, true);
+  check('天气条初始是隐藏的（等真拿到数据才露，否则会先闪一个空盒子）',
+    /id="weather"[^>]*style="display:none"/.test(HTML_SRC), true);
+
+  check('设置面板里有天气开关', /data-setting="showWeather"/.test(HTML_SRC), true);
+  check('城市行和快捷键行都不是开关（点整行不该有反应）',
+    (HTML_SRC.match(/class="setting-row setting-row-static"/g) || []).length, 2);
+  check('城市输入框和搜索按钮都在',
+    [/id="weatherPlaceInput"/.test(HTML_SRC), /data-action="search-weather-place"/.test(HTML_SRC)],
+    [true, true]);
+  // 结果列表必须是城市行的**兄弟**，不能是它的孩子：那一行是 flex，塞进去会横着排
+  check('结果列表是城市行的兄弟节点，不在那一行里面',
+    /<\/button>\s*<\/div>\s*<div class="weather-results"/.test(HTML_SRC), true);
+
+  // 城市搜索结果夹在城市行和快捷键行之间，所以设置面板的分隔线选择器
+  // 必须是 ~ 而不是 +。换回 + 的话，快捷键那行的上分隔线会**静默消失** ——
+  // 不报错、不崩，只是变丑，没有断言就只能靠人眼发现。
+  check('设置面板的分隔线用 ~ 兜住中间夹着的元素',
+    /\.setting-row\s*~\s*\.setting-row\s*\{[^}]*border-top/.test(CSS_SRC), true);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -1109,6 +1449,7 @@ function part10() {
   part8();
   part9();
   part10();
+  await part11();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

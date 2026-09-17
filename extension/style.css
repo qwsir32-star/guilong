@@ -185,7 +185,9 @@ header {
   cursor: pointer;
 }
 
-.setting-row + .setting-row {
+/* 用 ~ 而不是 +：城市搜索结果 (#weatherResults) 夹在城市行和快捷键行之间，
+   用 + 的话快捷键那行的上分隔线会**静默消失** —— 不报错，只是变丑。 */
+.setting-row ~ .setting-row {
   border-top: 1px solid var(--warm-gray);
 }
 
@@ -261,6 +263,122 @@ header {
 .shortcut-keys-unset {
   font-style: italic;
   letter-spacing: 0;
+  color: var(--muted);
+}
+
+/* ================================================================
+   天气条
+
+   放在页头**外面**（.container 的直接孩子，不是 header 的网格孩子）。
+   页头是写死 grid-column 的三栏网格，再塞一个会被显示/隐藏的孩子，
+   就会把那套「开关搜索框、齿轮左右跳」的坑重新打开。见 PART 8 的守卫。
+   ================================================================ */
+.weather {
+  display: flex;
+  align-items: baseline;   /* 19px 的温度和 13px 的说明按基线对齐才不飘 */
+  gap: 8px;
+  /* 页头自带 24px 下边距，往上收一点，让它读起来像问候语的续行，
+     而不是一块独立内容 */
+  margin: -6px 0 20px;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--muted);
+}
+
+.weather-icon {
+  align-self: center;      /* 图标是图形，不参与基线对齐 */
+  display: flex;
+  color: var(--muted);
+}
+
+.weather-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.weather-desc {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.weather-temp {
+  font-family: 'Newsreader', serif;
+  font-size: 19px;
+  letter-spacing: -0.3px;
+  color: var(--ink);
+}
+
+.weather-city,
+.weather-range {
+  font-size: 12px;
+}
+
+/* 分隔点在 CSS 里画，不进 HTML、也不进 JS。
+   跟着城市 / 区间一起被隐藏（display:none 会把 ::before 一并带走），
+   也不会在文案表里多出两条根本没法翻译的「·」。
+   margin-right 和外层 gap 取同一个值，点上下的空隙因此是对称的。 */
+.weather-city::before,
+.weather-range::before {
+  content: '·';
+  margin-right: 8px;
+}
+
+/* ---- 设置面板里的城市搜索 ---- */
+.weather-place-input {
+  flex-shrink: 0;
+  width: 200px;
+  padding: 6px 10px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 4px;
+  background: var(--card-bg);
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.weather-place-input:focus {
+  outline: none;
+  border-color: var(--accent-sage);
+}
+
+/* 搜索结果列表。是设置面板的直接孩子，不是城市行那一行的孩子 ——
+   那一行是 flex，塞进去会横着排成一条。 */
+.weather-results {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: -4px 0 12px;
+}
+
+.weather-result {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 6px;
+  background: var(--card-bg);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.weather-result:hover {
+  border-color: var(--accent-sage);
+}
+
+.weather-result-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.weather-result-hint {
+  padding: 6px 0;
+  font-size: 12px;
   color: var(--muted);
 }
 
