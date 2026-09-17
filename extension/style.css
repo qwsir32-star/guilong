@@ -56,11 +56,15 @@ body::before {
 
 /* ---- Header ---- */
 header {
-  display: flex;
-  justify-content: space-between;
-  /* 问候语是两行、搜索框是一行、齿轮是个小按钮，居中对齐比顶对齐耐看。
-     justify-content 仍然留着 space-between：搜索框在设置里被关掉之后，
-     问候语和齿轮还得各靠一边。 */
+  /* 三栏网格：问候语 | 搜索框 | 齿轮。
+     左右两栏都是 minmax(0, 1fr)，宽度恒等，所以中间那栏落在**页面中线上**，
+     和下面居中的站点条对齐。
+     之前用 flex + space-between 做不到这点：右侧齿轮比左侧问候语窄，
+     等分剩余空间之后搜索框会被往右拽约 (问候语宽 - 齿轮宽) / 2 ≈ 50px。
+     minmax(0, …) 而不是 1fr，是为了允许左右两栏收缩，窄屏时不会撑出横向滚动条。 */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 540px minmax(0, 1fr);
+  column-gap: 24px;
   align-items: center;
   /* 原本是 48px，靠 .quick-sites 自己 -24px 收回来。改成 24px 是因为页头和
      站点条之间现在夹着设置面板，负边距那套在这个结构下会打架。 */
@@ -70,7 +74,24 @@ header {
 }
 
 .header-left {
-  flex-shrink: 0;   /* 空间紧张时先挤搜索框，别把问候语挤成两行 */
+  justify-self: start;
+  min-width: 0;   /* 配合 minmax(0,1fr)，空间紧张时允许它收缩 */
+}
+
+/* 窄屏放不下三栏：问候语和齿轮留在第一行，搜索框自己独占第二行 */
+@media (max-width: 1040px) {
+  header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 18px;
+  }
+  .search-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .header-settings {
+    grid-column: 2;
+    grid-row: 1;
+  }
 }
 
 .header-left h1 {
@@ -96,6 +117,7 @@ header {
   align-items: center;
   gap: 7px;
   flex-shrink: 0;
+  justify-self: end;      /* 贴住第三栏的右边 */
   padding: 8px 15px;
   border: 1px solid var(--warm-gray);
   border-radius: 20px;
@@ -202,17 +224,12 @@ header {
 .setting-switch:checked::after { transform: translateX(17px); }
 .setting-switch:focus-visible { outline: 2px solid var(--accent-sage); outline-offset: 2px; }
 
-/* ---- 搜索框（页头中间那一段）----
-   flex:1 让它去吸收问候语和齿轮之间的全部空档，max-width 再把它收住 ——
-   不然在宽屏上会拉成一条接近 1000px 的长条，比原来那个单独一行更臃肿。
-   收住之后剩下的空档由 margin:auto 平分，于是它自动落在中间。
-   搜索框被设置关掉时整块 display:none，页头靠 space-between 恢复成
-   「问候语靠左、齿轮靠右」。 */
+/* ---- 搜索框（页头中间那一栏）----
+   居中由 header 的三栏网格负责（见 header 那条注释），这里只要填满自己的栏。
+   宽度上限就是网格中间栏的 540px。 */
 .search-bar {
-  flex: 1;
+  width: 100%;
   min-width: 0;
-  max-width: 540px;
-  margin: 0 auto;
 }
 
 .search-form {
@@ -268,6 +285,10 @@ header {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
+  /* 居中而不是靠左。这一条常常只有两三个图标，靠左会显得整块歪在左边，
+     跟上面居中的搜索框也对不上。flex-wrap 会自动换行，每行都各自居中，
+     所以 0 个、1 个、8 个都是居中的 —— 不需要 JS 去算。 */
+  justify-content: center;
   gap: 6px;
 }
 
@@ -275,7 +296,8 @@ header {
   font-size: 13px;
   font-style: italic;
   color: var(--muted);
-  padding: 16px 8px 16px 0;
+  /* 左右对称：居中之后右边那个 8px 不再需要单独特意留 */
+  padding: 16px 8px;
 }
 
 .quick-site {
