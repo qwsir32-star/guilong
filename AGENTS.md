@@ -110,7 +110,10 @@ open "chrome://extensions"
   删掉之后 Chrome 会改用**文件夹的绝对路径**来算 ID，用户一旦移动或重命名仓库目录，
   `chrome.storage` 里的数据（钉住的站点、稍后再看、设置开关）就会全部读不到 ——
   **静默失败，没有任何报错**。`tests/smoke.js` 有一条守卫盯着它。
-- **改完代码跑一遍 `node tests/smoke.js`**（188 处断言，有几条在循环里、实际跑 212 条；零依赖、不联网、一秒跑完）：
+- 工具栏图标的点击由 `background.js` 里的 `chrome.action.onClicked` 接住，走的是和快捷键同一个
+  `focusOrOpenDashboard()`。⚠️ **`action` 一旦有了 `default_popup`，`onClicked` 就再也不会触发**，
+  而且同样不报错 —— 冒烟测试有两条守卫成对盯着这件事（「有人接点击」+「没有 popup」）。
+- **改完代码跑一遍 `node tests/smoke.js`**（190 处断言，有几条在循环里、实际跑 214 条；零依赖、不联网、一秒跑完）：
   它既验证内部纯函数的行为，也扫描源码守住「文案必须走 `strings.js`」「页头版式不变量」
   「旧品牌名不许回流」这几条约定。它不点界面，所以**不能替代手动加载扩展看一眼**。
 - 更新：`cd guilong && git pull`，然后在 `chrome://extensions` 里点扩展卡片上的刷新按钮。

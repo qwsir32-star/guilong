@@ -2,7 +2,11 @@
  * background.js — Service Worker for Badge Updates
  *
  * Chrome's "always-on" background script for 归拢.
- * Its only job: keep the toolbar badge showing the current open tab count.
+ *
+ * 两件事：
+ *   1. 维护工具栏徽章上的标签页计数。
+ *   2. 接住工具栏图标的点击，以及 open-dashboard 快捷键 —— 两者走同一个
+ *      focusOrOpenDashboard()，「呼出仪表盘」只有一套行为。
  *
  * Since we no longer have a server, we query chrome.tabs directly.
  * The badge counts real web tabs (skipping chrome:// and extension pages).
@@ -91,6 +95,17 @@ chrome.commands.onCommand.addListener((command) => {
   focusOrOpenDashboard();
 });
 
+// ─── 工具栏图标：点一下就把仪表盘叫出来 ────────────────────────────────────────
+//
+// 以前点这个图标是没反应的：manifest 里没给 default_popup，也从来没注册过
+// onClicked —— 浏览器照常把点击派发出来，只是没人接，而且这种「没人接」
+// 是静默的，不会报错、不会留日志。现在把图标跟快捷键接到同一个函数上。
+//
+// ⚠️ 只有「图标没有 popup」时 onClicked 才会触发。将来如果给 action 加了
+// default_popup，这段会在不报错的情况下失效，点击变成弹小窗。
+chrome.action.onClicked.addListener(() => {
+  focusOrOpenDashboard();
+});
 
 // ─── Event listeners ──────────────────────────────────────────────────────────
 

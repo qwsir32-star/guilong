@@ -984,6 +984,16 @@ function part9() {
     }
   }
   check('manifest 声明的图标文件都在、且尺寸对得上', iconProblems, []);
+  /* 工具栏图标守卫：manifest 里没给 default_popup，那背景脚本就**必须**注册
+     onClicked，否则点图标什么都不会发生 —— 而且 Chrome 一个错都不报，
+     用户只会觉得「这个扩展坏了」。图标曾经就是这么白摆着的，没人发现。
+     反过来也守一条：一旦加了 default_popup，onClicked 就再也不会触发
+     （同样静默），那时这条守卫必须提醒你去看一眼。 */
+  const BG_SRC = srcOf('background.js');
+  check('图标的点击有人接（没 popup 就必须注册 onClicked）',
+    /chrome\.action\.onClicked\.addListener/.test(BG_SRC), true);
+  check('图标没有 default_popup（有的话 onClicked 永远不会触发）',
+    MANIFEST.action.default_popup === undefined, true);
   check('LICENSE 保留了原始署名',
     /Copyright \(c\) 2026 Zara Zhang/.test(fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8')), true);
 }
