@@ -1,5 +1,5 @@
 /* ================================================================
-   Tab Out — 文案表（STRINGS）
+   归拢 — 文案表（STRINGS）
 
    这里是**所有给用户看的字**的唯一来源。
    以前文案散在 app.js 的模板字符串和 index.html 里，改一处漏一处，
@@ -165,10 +165,10 @@ const STRINGS = {
     'toast.deduped':           '重复的只留了一个',
     'toast.confirmCloseAll':   '确认关闭 {n} 个标签页？再点一次',
     'toast.closedAll':         '已关闭 {n} 个标签页',
-    'toast.closedExtras':      '已关掉多余的 Tab Out 标签页',
+    'toast.closedExtras':      '已关掉多余的归拢标签页',
 
-    /* ---- 「你开了好几个 Tab Out」横幅。{count} 会被套进 <strong>，见 dupeBanner 的注释 ---- */
-    'dupeBanner.text':         '你现在开着 <strong>{count}</strong> 个 Tab Out 标签页，只留当前这一个？',
+    /* ---- 「你开了好几个归拢」横幅。{count} 会被套进 <strong>，见 dupeBanner 的注释 ---- */
+    'dupeBanner.text':         '你现在开着 <strong>{count}</strong> 个归拢标签页，只留当前这一个？',
     'dupeBanner.action':       '关掉多余的',
   },
 
@@ -284,9 +284,9 @@ const STRINGS = {
     'toast.deduped':           'Closed duplicates, kept one copy each',
     'toast.confirmCloseAll':   'Close {n} tabs? Click again to confirm',
     'toast.closedAll':         'Closed {n} tabs',
-    'toast.closedExtras':      'Closed extra Tab Out tabs',
+    'toast.closedExtras':      'Closed extra Guilong tabs',
 
-    'dupeBanner.text':         'You have <strong>{count}</strong> Tab Out tabs open. Keep just this one?',
+    'dupeBanner.text':         'You have <strong>{count}</strong> Guilong tabs open. Keep just this one?',
     'dupeBanner.action':       'Close extras',
   },
 };

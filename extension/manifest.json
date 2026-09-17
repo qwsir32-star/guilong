@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tab Out",
+  "name": "归拢 · 新标签页",
   "version": "1.0.0",
-  "description": "Keep tabs on your tabs. New tab page that groups your open tabs by domain and lets you close them with style.",
+  "description": "把你的标签页归拢到一处：按域名分组、一键关干净、没看完的先存起来。",
   "permissions": ["tabs", "activeTab", "storage", "topSites", "favicon", "search"],
   "chrome_url_overrides": { "newtab": "index.html" },
   "background": { "service_worker": "background.js" },
@@ -12,11 +12,11 @@
         "default": "Ctrl+Shift+1",
         "mac": "Command+Shift+1"
       },
-      "description": "呼出 / 聚焦 Tab Out 仪表盘"
+      "description": "呼出 / 聚焦归拢仪表盘"
     }
   },
   "action": {
-    "default_title": "Tab Out",
+    "default_title": "归拢",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png"

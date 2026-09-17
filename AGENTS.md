@@ -1,96 +1,107 @@
-# AGENTS.md -- Tab Out: Setup & Onboarding Guide for Coding Agents
+# AGENTS.md -- 归拢：给编码 agent 的安装与引导手册
 
-You're installing **Tab Out** for the user. Your job is not just to set it up -- it's to get them excited about using it.
-
----
-
-## Step 0 -- Introduce the product
-
-Before doing anything technical, tell the user what they're about to get:
-
-> **Tab Out** replaces your new tab page with a clean dashboard of everything you have open, grouped by domain.
->
-> Here's what makes it great:
-> - **See all your open tabs at a glance** grouped by domain on a grid
-> - **Homepages group** pulls Gmail, X, LinkedIn, YouTube, GitHub homepages into one card for easy cleanup
-> - **Close tabs with style** satisfying swoosh sound + confetti burst
-> - **Duplicate detection** flags when you have the same page open twice
-> - **Click any tab title to jump to it** even across different Chrome windows
-> - **Save for later** bookmark individual tabs to a checklist before closing them
-> - **100% local** no server, no accounts, no data sent anywhere
->
-> It's just a Chrome extension. Setup takes about 1 minute.
+你要帮用户装上 **归拢**。你的任务不只是把它跑起来 —— 还要让用户明白自己拿到了什么。
 
 ---
 
-## Step 1 -- Clone the repo
+## Step 0 -- 先讲清楚这是什么
+
+动手之前，告诉用户他即将得到什么：
+
+> **归拢**接管你的新标签页，把你此刻开着的所有标签页按域名摆成一张仪表盘。
+>
+> 它好在哪：
+> - **一眼看尽** 打开的标签页按域名分组，网格排开
+> - **主页单独成组** Gmail、X、LinkedIn、YouTube、GitHub 主页收进一张卡片，一次关干净
+> - **关得爽** 关闭时有合成音效 + 彩带
+> - **重复检测** 同一个页面开了两遍会被标出来
+> - **点标题就跳** 直接跳到那一页，跨窗口也行
+> - **存入稍后再看** 关之前先把想留的存进清单
+> - **100% 本地** 没有服务器、不用账号、数据不外发
+>
+> 就是一个 Chrome 扩展，装起来大约 1 分钟。
+
+---
+
+## Step 1 -- 克隆仓库
 
 ```bash
-git clone https://github.com/zarazhangrui/tab-out.git
+git clone https://github.com/qwsir32-star/tab-out.git
 cd tab-out
 ```
 
 ---
 
-## Step 2 -- Install the Chrome extension
+## Step 2 -- 装扩展
 
-This is the one step that requires manual action from the user. Make it as easy as possible.
+这一步必须用户自己动手。尽量让过程省事，别让他在文件选择框里翻目录。
 
-**First**, print the full path to the `extension/` folder:
+**先** 打印 `extension/` 的绝对路径：
+
 ```bash
 echo "Extension folder: $(cd extension && pwd)"
 ```
 
-**Then**, copy the `extension/` folder path to their clipboard:
+**再** 把路径复制进剪贴板：
+
 - macOS: `cd extension && pwd | pbcopy && echo "Path copied to clipboard"`
 - Linux: `cd extension && pwd | xclip -selection clipboard 2>/dev/null || echo "Path: $(pwd)"`
 - Windows: `cd extension && echo %CD% | clip`
 
-**Then**, open the extensions page:
+**再** 打开扩展管理页：
+
 ```bash
 open "chrome://extensions"
 ```
 
-**Then**, walk the user through it step by step:
+**然后** 一步一步带着用户做：
 
-> I've copied the extension folder path to your clipboard. Now:
+> 路径已经复制到你的剪贴板了。接下来：
 >
-> 1. You should see Chrome's extensions page. In the **top-right corner**, toggle on **Developer mode** (it's a switch).
-> 2. Once Developer mode is on, you'll see a button called **"Load unpacked"** appear in the top-left. Click it.
-> 3. A file picker will open. **Press Cmd+Shift+G** (Mac) or **Ctrl+L** (Windows/Linux) to open the "Go to folder" bar, then **paste** the path I copied (Cmd+V / Ctrl+V) and press Enter.
-> 4. Click **"Select"** or **"Open"** and the extension will install.
+> 1. 你应该看到 Chrome 的扩展管理页。在**右上角**打开**开发者模式**（一个开关）。
+> 2. 打开后左上角会出现**「加载已解压的扩展程序」**按钮，点它。
+> 3. 会弹出文件选择框。**按 Cmd+Shift+G**（Mac）或 **Ctrl+L**（Windows / Linux）打开「前往文件夹」，**粘贴**刚才那条路径（Cmd+V / Ctrl+V）后回车。
+> 4. 点**「选择」**，扩展就装上了。
 >
-> You should see "Tab Out" appear in your extensions list.
+> 装完你应该能在扩展列表里看到「归拢」。
 
-**Also**, open the file browser directly to the extension folder as a fallback:
+**另外**，顺手把文件浏览器也打开到 extension 目录，作为兜底（用户可能更习惯自己拖）：
+
 - macOS: `open extension/`
 - Linux: `xdg-open extension/`
 - Windows: `explorer extension\\`
 
 ---
 
-## Step 3 -- Show them around
+## Step 3 -- 带用户逛一圈
 
-Once the extension is loaded:
+装好之后：
 
-> You're all set! Open a **new tab** and you'll see Tab Out.
+> 成了。打开一个**新标签页**，你看到的就是归拢。
 >
-> Here's how it works:
-> 1. **Your open tabs are grouped by domain** in a grid layout.
-> 2. **Homepages** (Gmail inbox, X home, YouTube, etc.) are in their own group at the top.
-> 3. **Click any tab title** to jump directly to that tab.
-> 4. **Click the X** next to any tab to close just that one (with swoosh + confetti).
-> 5. **Click "Close all N tabs"** on a group to close the whole thing.
-> 6. **Duplicate tabs** are flagged with an amber "(2x)" badge. Click "Close duplicates" to keep one copy.
-> 7. **Save a tab for later** by clicking the bookmark icon before closing it. Saved tabs appear in the sidebar.
+> 它是这么工作的：
+> 1. **你开着的标签页按域名分组**，摆在网格里。
+> 2. **主页**（Gmail 收件箱、X 首页、YouTube 等）单独一组，放在最前面。
+> 3. **点任意标签页标题** 直接跳到那一页，跨窗口也行，不会多开一个标签页。
+> 4. **点标题旁边的 ×** 只关这一个，有音效和彩带。
+> 5. **点整组的「关闭全部 N 个」** 把一组关干净。第一次点会问你「确认关闭 N 个标签页？再点一次」，防手滑。
+> 6. **开重了的页面**带一个琥珀色的重复标记，点「关闭 N 个重复」只留一份。
+> 7. **关之前想留着**，点书签图标「存入稍后再看」，它会出现在右边的清单里。
+> 8. **顶部那条常用站点**：按住就能拖动排序，点一下永远是新开一个标签页，不会去找已经开着的那一个。
+> 9. **页头的搜索框**：输入网址直接打开，否则交给你自己设的默认搜索引擎（不硬编码任何一家）。
+> 10. **右上角的齿轮**可以关掉「常用站点条」和「搜索框」。关掉只是不显示，钉过的站点一条都不会丢。
 >
-> That's it! No server to run, no config files. Everything works right away.
+> 就这样。没有服务器要跑，没有配置文件要写，装上就能用。
 
 ---
 
-## Key Facts
+## 关键事实
 
-- Tab Out is a pure Chrome extension. No server, no Node.js, no npm.
-- Saved tabs are stored in `chrome.storage.local` (persists across sessions).
-- 100% local. No data is sent to any external service.
-- To update: `cd tab-out && git pull`, then reload the extension in `chrome://extensions`.
+- 归拢是一个**纯 Chrome 扩展**：没有服务器、不需要 Node.js、不需要 npm、没有构建步骤。
+- 存储用 `chrome.storage.local`，跨会话保留。
+- 100% 本地，不向任何外部服务发送数据。
+- 想个性化（扩展「主页」的判定范围、自定义合并分组）就建 `extension/config.local.js`，这个文件已被 `.gitignore` 忽略。**其中规则的优先级高于内置规则**，可以覆盖内置的合并逻辑。
+- 界面文案全部集中在 `extension/strings.js`，默认中文。改文案只改这一张表，不要在 `app.js` 里硬编码字符串。
+- 更新：`cd tab-out && git pull`，然后在 `chrome://extensions` 里点扩展卡片上的刷新按钮。
+  **改完记得关掉旧的新标签页重新开**——新标签页有缓存，只点刷新按钮不一定生效。
+- 本项目是 [Tab Out](https://github.com/zarazhangrui/tab-out) 的衍生版（MIT），原始署名与许可证原文见 `LICENSE`。

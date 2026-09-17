@@ -1,5 +1,5 @@
 /* ================================================================
-   Tab Out — Dashboard App (Pure Extension Edition)
+   归拢 — Dashboard App (Pure Extension Edition)
 
    This file is the brain of the dashboard. Now that the dashboard
    IS the extension page (not inside an iframe), it can call
@@ -30,7 +30,7 @@ let openTabs = [];
  * fetchOpenTabs()
  *
  * Reads all currently open browser tabs directly from Chrome.
- * Sets the extensionId flag so we can identify Tab Out's own pages.
+ * Sets the extensionId flag so we can identify Guilong's own pages.
  */
 async function fetchOpenTabs() {
   try {
@@ -45,7 +45,7 @@ async function fetchOpenTabs() {
       title:    t.title,
       windowId: t.windowId,
       active:   t.active,
-      // Flag Tab Out's own pages so we can detect duplicate new tabs
+      // Flag Guilong's own pages so we can detect duplicate new tabs
       isTabOut: t.url === newtabUrl || t.url === 'chrome://newtab/',
     }));
   } catch {
@@ -172,7 +172,7 @@ async function closeDuplicateTabs(urls, keepOne = true) {
 /**
  * closeTabOutDupes()
  *
- * Closes all duplicate Tab Out new-tab pages except the current one.
+ * Closes all duplicate Guilong new-tab pages except the current one.
  */
 async function closeTabOutDupes() {
   const extensionId = chrome.runtime.id;
@@ -186,7 +186,7 @@ async function closeTabOutDupes() {
 
   if (tabOutTabs.length <= 1) return;
 
-  // Keep the active Tab Out tab in the CURRENT window — that's the one the
+  // Keep the active Guilong tab in the CURRENT window — that's the one the
   // user is looking at right now. Falls back to any active one, then the first.
   const keep =
     tabOutTabs.find(t => t.active && t.windowId === currentWindow.id) ||
@@ -318,7 +318,7 @@ async function saveAllOpenTabs({ closeAfter = false } = {}) {
   const { active } = await getSavedTabs();
   const pending   = new Set(active.map(t => t.url));
 
-  // 只处理真实网页，顺手排除 Tab Out 自己（getRealTabs 已滤掉 chrome-extension://）
+  // 只处理真实网页，顺手排除归拢自己（getRealTabs 已滤掉 chrome-extension://）
   const candidates = getRealTabs().filter(t => !t.isTabOut && t.url);
 
   const base  = Date.now();
@@ -366,7 +366,7 @@ async function saveAllOpenTabs({ closeAfter = false } = {}) {
 /* ----------------------------------------------------------------
    常用站点（手动钉住 + chrome.topSites 自动补足）
 
-   为什么要有这一块：Tab Out 接管新标签页之后，Chrome 原生的那排
+   为什么要有这一块：归拢接管新标签页之后，Chrome 原生的那排
    「快捷方式」就没了，用户原来靠它一键到常用网站，现在无路可走。
    这里把那个能力找回来：手动钉的排前面并固定顺序，剩下的用
    chrome.topSites 的历史热度自动补。
@@ -673,7 +673,7 @@ function wireFaviconFallbacks(root) {
    也不要因为猜错而把真图标删掉。
    ------------------------------------------------------------------ */
 
-const DEFAULT_FAVICON_PROBE = 'https://tab-out-no-such-site.invalid/';
+const DEFAULT_FAVICON_PROBE = 'https://guilong-no-such-site.invalid/';
 let   defaultFaviconSig     = null;   // Promise<string|null>，只求一次
 
 /**
@@ -941,7 +941,7 @@ async function getQuickSites() {
     top = (await chrome.topSites.get()) || [];
   } catch (err) {
     // 没授予 topSites 权限 / API 不可用 —— 降级成「只显示手动钉住的」，不要报错吓人
-    console.warn('[tab-out] 读不到 topSites，只显示手动钉住的站点:', err);
+    console.warn('[guilong] 读不到 topSites，只显示手动钉住的站点:', err);
     top = [];
   }
 
@@ -1499,7 +1499,7 @@ function getRealTabs() {
 /**
  * checkTabOutDupes()
  *
- * Counts how many Tab Out pages are open. If more than 1,
+ * Counts how many Guilong pages are open. If more than 1,
  * shows a banner offering to close the extras.
  */
 function checkTabOutDupes() {
@@ -1737,7 +1737,7 @@ async function renderDeferredColumn() {
     }
 
   } catch (err) {
-    console.warn('[tab-out] Could not load saved tabs:', err);
+    console.warn('[guilong] Could not load saved tabs:', err);
     column.style.display = 'none';
   }
 }
@@ -1818,7 +1818,7 @@ async function renderQuickSites() {
   try {
     sites = await getQuickSites();
   } catch (err) {
-    console.warn('[tab-out] 常用站点渲染失败:', err);
+    console.warn('[guilong] 常用站点渲染失败:', err);
   }
 
   const addTile = `
@@ -2059,7 +2059,7 @@ async function applyPinSuggestion() {
   try {
     suggestion = await suggestSiteName(href);
   } catch (err) {
-    console.warn('[tab-out] 自动抓取站点名称失败:', err);
+    console.warn('[guilong] 自动抓取站点名称失败:', err);
     return;
   }
 
@@ -2260,7 +2260,7 @@ async function renderStaticDashboard() {
   const statTabs = document.getElementById('statTabs');
   if (statTabs) statTabs.textContent = openTabs.length;
 
-  // --- Check for duplicate Tab Out tabs ---
+  // --- Check for duplicate Guilong tabs ---
   checkTabOutDupes();
 
   // --- Render "Saved for Later" column ---
@@ -2361,7 +2361,7 @@ async function runSearch(raw) {
       await chrome.search.query({ text, disposition: 'NEW_TAB' });
       return;
     } catch (err) {
-      console.warn('[tab-out] chrome.search 失败，退回必应:', err);
+      console.warn('[guilong] chrome.search 失败，退回必应:', err);
     }
   }
 
@@ -2401,7 +2401,7 @@ document.addEventListener('click', async (e) => {
 
   const action = actionEl.dataset.action;
 
-  // ---- Close duplicate Tab Out tabs ----
+  // ---- Close duplicate Guilong tabs ----
   if (action === 'close-tabout-dupes') {
     await closeTabOutDupes();
     playCloseSound();
@@ -2603,7 +2603,7 @@ document.addEventListener('click', async (e) => {
     try {
       await saveTabForLater({ url: tabUrl, title: tabTitle });
     } catch (err) {
-      console.error('[tab-out] Failed to save tab:', err);
+      console.error('[guilong] Failed to save tab:', err);
       showToast(T('toast.saveFailed'));
       return;
     }
@@ -2704,7 +2704,7 @@ document.addEventListener('click', async (e) => {
     try {
       result = await saveAllOpenTabs({ closeAfter });
     } catch (err) {
-      console.error('[tab-out] 批量存入失败:', err);
+      console.error('[guilong] 批量存入失败:', err);
       showToast(T('toast.batchSaveFailed'));
       return;
     }
@@ -2907,7 +2907,7 @@ document.addEventListener('submit', (e) => {
   e.preventDefault();
   const input = document.getElementById('searchInput');
   runSearch(input ? input.value : '')
-    .catch(err => console.warn('[tab-out] 搜索失败:', err));
+    .catch(err => console.warn('[guilong] 搜索失败:', err));
 });
 
 
@@ -3027,7 +3027,7 @@ document.addEventListener('input', async (e) => {
     archiveList.innerHTML = results.map(item => renderArchiveItem(item)).join('')
       || `<div style="font-size:12px;color:var(--muted);padding:8px 0">${T('archive.noResults')}</div>`;
   } catch (err) {
-    console.warn('[tab-out] Archive search failed:', err);
+    console.warn('[guilong] Archive search failed:', err);
   }
 });
 
