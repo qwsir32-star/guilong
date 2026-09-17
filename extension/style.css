@@ -238,6 +238,32 @@ header {
 .setting-switch:checked::after { transform: translateX(17px); }
 .setting-switch:focus-visible { outline: 2px solid var(--accent-sage); outline-offset: 2px; }
 
+/* 不是开关的设置行（快捷键）—— 整行没有可点的语义，光标别装成能点 */
+.setting-row-static { cursor: default; }
+
+/* 快捷键的键帽。JS 只往里塞文字，样式全在这里 —— 
+   未绑定时加 .shortcut-keys-unset，「未设置」三个字不能长得像一组按键。 */
+.shortcut-keys {
+  flex-shrink: 0;
+  min-width: 38px;
+  padding: 3px 9px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 5px;
+  background: var(--warm-gray);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.shortcut-keys-unset {
+  font-style: italic;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
 /* ---- 搜索框（页头中间那一栏）----
    居中由 header 的三栏网格负责（见 header 那条注释），这里只要填满自己的栏。
    宽度上限就是网格中间栏的 540px。 */

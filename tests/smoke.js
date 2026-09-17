@@ -42,6 +42,7 @@ const code = fs.readFileSync(APP, 'utf8') + `
   updatePinnedSite, movePinnedSite, promoteTopSite,
   faviconSignature, dropIfDefaultFavicon,
   getUiPrefs, setUiPref, applyUiPrefs, looksLikeUrl, runSearch, focusSearchBox,
+  formatShortcut, formatShortcutParts, COMMAND_NAME, SHORTCUTS_URL,
 };`;
 
 /* ---------------- 假 chrome / 假存储 ---------------- */
@@ -1003,6 +1004,99 @@ function part9() {
     /Copyright \(c\) 2026 Zara Zhang/.test(fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8')), true);
 }
 
+/* =================================================================
+   PART 10 — 呼出快捷键
+
+   Chrome 的 commands API **只能读**：commands.update() / reset() 是 Firefox
+   才有的东西。所以这块的核心不是「能不能改」，而是三件事：
+
+     1. 读到的组合串能不能渲染成人看得懂的样子（两种形态都要接）
+     2. 有没有去调根本不存在的 API —— 调了不会加载失败，但功能一定是死的
+     3. manifest 里填的键 Chrome 认不认 —— 非法键（比如用户最想要的 `\`）
+        会让扩展**直接装不上**
+   ================================================================= */
+function part10() {
+  console.log('\n[PART 10] 呼出快捷键');
+
+  const APP_SRC  = fs.readFileSync(APP, 'utf8');
+  const HTML_SRC = srcOf('index.html');
+  const cmds = JSON.parse(srcOf('manifest.json')).commands;
+
+  const NAME = T.COMMAND_NAME;
+  check('命令名和 manifest 里声明的一致', NAME in cmds, true);
+  check('跳转地址就是 Chrome 那个页面', T.SHORTCUTS_URL, 'chrome://extensions/shortcuts');
+
+  /* ---- 组合串的两种形态都要接住 ----
+     Windows / Linux 上 getAll() 给的是 "Ctrl+Shift+K" 这种写法；
+     macOS 上常常直接给 "⌘⇧K" 符号串 —— 里面没有 "+"，必须原样返回，
+     绝不能拿英文名再拼一遍，否则会变成「⌘ ⇧ K」这种四不像。
+     沙箱里没有 navigator，所以 IS_MAC 一定是 false，这两条的期望值是确定的。 */
+  check('英文写法拆得开',       T.formatShortcut('Ctrl+Shift+K'), 'Ctrl + Shift + K');
+  check('macOS 符号串原样保留', T.formatShortcut('⌘⇧K'), '⌘⇧K');
+  check('空串当没设',           T.formatShortcut(''), '');
+  check('undefined 也不炸',     T.formatShortcut(undefined), '');
+
+  /* ---- 符号渲染单独测：真机是 Mac 还是 Windows 造不出来，isMac 当参数传 ---- */
+  check('Mac：渲染成符号',    T.formatShortcutParts(['Command', 'Shift', 'K'], true), '⌘⇧K');
+  check('非 Mac：保留英文名', T.formatShortcutParts(['Command', 'Shift', 'K'], false), 'Cmd + Shift + K');
+  /* 这两个最容易翻错：Alt 在 Mac 上是 Option；而 MacCtrl 才是 macOS 上真正的
+     Control 键（在 mac 上写 Ctrl 会被 Chrome 自动转成 Command）。 */
+  check('Mac：Alt 显示成 Option 符号', T.formatShortcutParts(['Alt', 'Shift', 'C'], true), '⌥⇧C');
+  check('Mac：MacCtrl 显示成 Control', T.formatShortcutParts(['MacCtrl', 'Shift', 'C'], true), '⌃⇧C');
+
+  /* ---- ⚠️ 合法键的白名单守卫 ----
+     Chrome 认识的键只有：A–Z、0–9、Comma、Period、Home、End、PageUp、
+     PageDown、Space、Insert、Delete、四个方向键、四个媒体键；
+     修饰键只有 Ctrl / Alt / Shift / MacCtrl / Command / Option / Search。
+
+     **反斜杠 `\` 不在里面** —— 用户第一句想要的就是 ⌘+\，而它恰好不合法。
+     把这份白名单写成断言，是为了以后没人能把它悄悄填回去：
+     非法键不是「运行时不生效」，会让扩展直接装不上。 */
+  const MODIFIERS = ['Ctrl', 'Alt', 'Shift', 'MacCtrl', 'Command', 'Option', 'Search'];
+  const PLAIN_KEYS = ['Comma', 'Period', 'Home', 'End', 'PageUp', 'PageDown', 'Space',
+    'Insert', 'Delete', 'Up', 'Down', 'Left', 'Right',
+    'MediaNextTrack', 'MediaPlayPause', 'MediaPrevTrack', 'MediaStop'];
+
+  const badTokens = [];
+  const noModifier = [];
+  for (const [cmd, def] of Object.entries(cmds)) {
+    const sk = def.suggested_key || {};
+    for (const [plat, combo] of Object.entries(sk)) {
+      const toks = String(combo).split('+');
+      for (const tok of toks) {
+        const ok = /^[A-Z0-9]$/.test(tok) || MODIFIERS.includes(tok) || PLAIN_KEYS.includes(tok);
+        if (!ok) badTokens.push(cmd + ' ' + plat + ' 里的 ' + JSON.stringify(tok));
+      }
+      // Chrome 的硬性要求：组合里必须有一个 Ctrl 或 Alt（mac 上 Command 也算）
+      if (!toks.some(t => ['Ctrl', 'Alt', 'MacCtrl', 'Command'].includes(t))) {
+        noModifier.push(cmd + ' ' + plat);
+      }
+    }
+  }
+  check('suggested_key 里没有 Chrome 不认识的键（比如反斜杠）', badTokens, []);
+  check('每个 suggested_key 都至少带一个修饰键', noModifier, []);
+
+  /* ---- 静态约定 ---- */
+  check('确实在读 Chrome 给的绑定，而不是自己编一个',
+    /chrome\.commands\.getAll\(\)/.test(APP_SRC), true);
+
+  /* ⚠️ 这条是这次的重点。commands.update() / commands.reset() 只有 Firefox 有。
+     在 Chrome 上调它们**不会让扩展加载失败**，只会永远不生效 ——
+     写起来像对的、跑起来是死的，正是最该守的那一类。
+     注意要拿挖掉注释的代码去比：app.js 的注释里正好提到了这两个名字。 */
+  const codeOnly = APP_SRC
+    .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+    .split('\n').map(l => l.replace(/(^|[^:'"\\])\/\/.*$/, '$1')).join('\n');
+  check('没有去调只有 Firefox 才有的 commands.update / reset',
+    [/\bcommands\.update\s*\(/.test(codeOnly), /\bcommands\.reset\s*\(/.test(codeOnly)],
+    [false, false]);
+
+  check('设置面板里有快捷键那一行', /data-action="change-shortcut"/.test(HTML_SRC), true);
+  check('显示当前绑定的元素也在',   /id="shortcutKeys"/.test(HTML_SRC), true);
+  check('快捷键那一行不是开关（用 div，点整行不该有反应）',
+    /class="setting-row setting-row-static"/.test(HTML_SRC), true);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -1014,6 +1108,7 @@ function part9() {
   await part7();
   part8();
   part9();
+  part10();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

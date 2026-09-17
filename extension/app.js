@@ -2318,6 +2318,98 @@ async function applyUiPrefs() {
   return prefs;
 }
 
+/* ----------------------------------------------------------------
+   呼出快捷键（设置面板里那一行）
+
+   ⚠️ Chrome 的 commands API **只能读，不能写**。commands.update() 和
+   commands.reset() 是 Firefox 才有的东西，Chrome 这边扩展没有任何办法
+   设定或修改自己的快捷键。所以这一行能做的只有两件事：
+
+     把 Chrome 当前绑的组合读出来显示 + 一个按钮跳到 Chrome 自己的
+     快捷键页面让用户改。
+
+   这不是「绕开限制失败」，是唯一存在的路子。而且那个页面能录的组合比
+   manifest 里的 suggested_key 宽松得多 —— 用户想要的「自由修改组合」
+   真正发生在那里，不在我们这边。
+   ---------------------------------------------------------------- */
+
+const COMMAND_NAME  = 'open-dashboard';
+const SHORTCUTS_URL = 'chrome://extensions/shortcuts';
+
+// navigator 在 Node 的冒烟测试沙箱里不存在，判一下再读，别让加载直接炸
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '');
+
+/**
+ * formatShortcutParts(parts, isMac) — 把拆好的按键拼成好认的样子
+ *
+ * parts 来自 Chrome 给的组合串，例如 ['Command','Shift','K']。
+ * 单独拆成一个函数是为了**可测**：真机是 Mac 还是 Windows 造不出来，
+ * 但 isMac 可以当参数传进去。
+ */
+function formatShortcutParts(parts, isMac) {
+  const glyph = {
+    Command: '⌘', Cmd: '⌘', MacCtrl: '⌃', Ctrl: '⌃', Control: '⌃',
+    Alt: '⌥', Option: '⌥', Shift: '⇧', Space: T('key.space'),
+  };
+  const word = {
+    Command: 'Cmd', Cmd: 'Cmd', MacCtrl: 'Ctrl', Ctrl: 'Ctrl', Control: 'Ctrl',
+    Alt: 'Alt', Option: 'Option', Shift: 'Shift', Space: T('key.space'),
+  };
+  const table = isMac ? glyph : word;
+  return parts.map(p => table[p] || p).join(isMac ? '' : ' + ');
+}
+
+/**
+ * formatShortcut(combo) — "Command+Shift+K" 或 "⌘⇧K" → 好认的显示形式
+ *
+ * 两种输入都要接住：Windows / Linux 上 getAll() 给的是 "Ctrl+Shift+K"
+ * 这种写法，macOS 上常常直接给 "⌘⇧K" 这种符号串。符号串里没有 "+"，
+ * 拆出来只有一个 token —— 那就原样用它，别再拿英文名去拼一遍。
+ */
+function formatShortcut(combo) {
+  if (!combo) return '';
+  const parts = combo.split('+').map(s => s.trim()).filter(Boolean);
+  if (parts.length <= 1) return combo;
+  return formatShortcutParts(parts, IS_MAC);
+}
+
+/**
+ * renderShortcutSetting() — 读出当前绑定并显示出来
+ *
+ * 读不到就显示「未设置」，**不往外抛** —— 快捷键没绑上不该把整个设置面板带崩。
+ */
+async function renderShortcutSetting() {
+  const box = document.getElementById('shortcutKeys');
+  if (!box) return;
+
+  let combo = '';
+  try {
+    const all = await chrome.commands.getAll();
+    const cmd = (all || []).find(c => c.name === COMMAND_NAME);
+    combo = (cmd && cmd.shortcut) || '';
+  } catch {
+    combo = '';
+  }
+
+  box.textContent = combo ? formatShortcut(combo) : T('settings.shortcut.unset');
+  box.classList.toggle('shortcut-keys-unset', !combo);
+}
+
+/** openShortcutSettings() — 跳到 Chrome 自己的快捷键页面（扩展不能替你改） */
+async function openShortcutSettings() {
+  try {
+    await chrome.tabs.create({ url: SHORTCUTS_URL });
+  } catch {
+    showToast(T('toast.shortcutUnavailable'));
+  }
+}
+
+/* 用户去 Chrome 那边改完快捷键、切回这个标签页时，把显示刷新一下。
+   少了这一步，他会一直看着打开面板那一刻的旧值，然后以为没设成功。 */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') renderShortcutSetting();
+});
+
 /**
  * focusSearchBox() — 把光标放进搜索框
  *
@@ -2377,6 +2469,9 @@ async function renderDashboard() {
   // 再把开关状态落到 DOM 上：站点条可能整个被关掉，那样连渲染都不用做
   const prefs = await applyUiPrefs();
 
+  // 快捷键那一行：读 Chrome 当前给它绑的组合（读不到就显示「未设置」）
+  await renderShortcutSetting();
+
   // 光标尽早进去，别等下面那两步渲染完 —— 用户开了新标签页可能立刻就开始打字
   if (prefs.showSearchBox) focusSearchBox();
 
@@ -2424,6 +2519,14 @@ document.addEventListener('click', async (e) => {
     const open = !panel.classList.contains('open');
     panel.classList.toggle('open', open);
     if (toggle) toggle.classList.toggle('open', open);
+    // 面板是刚展开的，顺手把快捷键的当前值读一次 —— 可能上次看之后用户改过了
+    if (open) await renderShortcutSetting();
+    return;
+  }
+
+  // ---- 快捷键：跳到 Chrome 自己的快捷键页面（我们改不了，只能送他过去）----
+  if (action === 'change-shortcut') {
+    await openShortcutSettings();
     return;
   }
 

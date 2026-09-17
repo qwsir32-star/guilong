@@ -120,7 +120,16 @@ open "chrome://extensions"
 - 工具栏图标的点击由 `background.js` 里的 `chrome.action.onClicked` 接住，走的是和快捷键同一个
   `focusOrOpenDashboard()`。⚠️ **`action` 一旦有了 `default_popup`，`onClicked` 就再也不会触发**，
   而且同样不报错 —— 冒烟测试有两条守卫成对盯着这件事（「有人接点击」+「没有 popup」）。
-- **改完代码跑一遍 `node tests/smoke.js`**（191 处断言，有几条在循环里、实际跑 215 条；零依赖、不联网、一秒跑完）：
+- **快捷键（`commands`）只能读，不能写。** `commands.update()` / `commands.reset()` 是 Firefox 才有的，
+  Chrome 上扩展没有任何办法设定或修改自己的快捷键。设置面板里那一行做的是「显示当前绑定 +
+  跳到 `chrome://extensions/shortcuts`」，这不是妥协，是唯一存在的路子。
+  两条硬规则：组合里必须有一个 `Ctrl` / `Alt`（mac 上 `Command` 也算），且按键只能是
+  `A–Z 0–9 Comma Period Home End PageUp PageDown Space Insert Delete 方向键 媒体键` ——
+  **反斜杠不合法**，`⌘+\` 注册不了。PART 10 里有一条白名单断言把这份列表钉住了。
+  另：改 `suggested_key` 后**点刷新不一定生效**，Chrome 常常要重新加载扩展才重新分配；
+  而「移除再重载」会连 `chrome.storage.local` 一起清掉 —— 所以默认值只是建议，
+  要改就让用户在上面那个页面改。
+- **改完代码跑一遍 `node tests/smoke.js`**（208 处断言，有几条在循环里、实际跑 232 条；零依赖、不联网、一秒跑完）：
   它既验证内部纯函数的行为，也扫描源码守住「文案必须走 `strings.js`」「页头版式不变量」
   「旧品牌名不许回流」这几条约定。它不点界面，所以**不能替代手动加载扩展看一眼**。
 - 更新：`cd guilong && git pull`，然后在 `chrome://extensions` 里点扩展卡片上的刷新按钮。

@@ -61,11 +61,22 @@ const STRINGS = {
 
     /* ---- 设置面板（页头齿轮）---- */
     'settings.button':         '设置',
-    'settings.title':          '新标签页上显示什么',
+    'settings.title':          '设置',
     'settings.quickSites.name': '常用站点条',
     'settings.quickSites.desc': '把常用网站钉在这里，一点就到。关掉只是不显示，钉过的不会丢。',
     'settings.searchBox.name':  '搜索框',
     'settings.searchBox.desc':  '在新标签页直接输入关键词，用你设置的默认搜索引擎去搜。',
+
+    /* ---- 快捷键（设置面板里那一行）
+       注意这一行不是开关：Chrome 不允许扩展改自己的快捷键，
+       所以只能「显示当前值 + 送你到 Chrome 的页面去改」。 */
+    'settings.shortcut.name':   '呼出快捷键',
+    'settings.shortcut.desc':   '按一下就打开归拢。Chrome 不允许扩展自己改快捷键，所以这里只能看 —— 点右边去 Chrome 的页面设一次，回到这里会自动更新。',
+    'settings.shortcut.change': '去设置',
+    'settings.shortcut.unset':  '未设置',
+
+    /* ---- 按键名（只有空格需要翻译，字母数字照抄）---- */
+    'key.space':                '空格',
 
     /* ---- 区块标题 ---- */
     'section.openTabs':        '打开的标签页',
@@ -166,6 +177,7 @@ const STRINGS = {
     'toast.confirmCloseAll':   '确认关闭 {n} 个标签页？再点一次',
     'toast.closedAll':         '已关闭 {n} 个标签页',
     'toast.closedExtras':      '已关掉多余的归拢标签页',
+    'toast.shortcutUnavailable': '没能打开 Chrome 的快捷键页面，请在地址栏手动输入 chrome://extensions/shortcuts',
 
     /* ---- 「你开了好几个归拢」横幅。{count} 会被套进 <strong>，见 dupeBanner 的注释 ---- */
     'dupeBanner.text':         '你现在开着 <strong>{count}</strong> 个归拢标签页，只留当前这一个？',
@@ -191,11 +203,18 @@ const STRINGS = {
     'search.placeholder':      'Search, or type a URL to open it',
 
     'settings.button':         'Settings',
-    'settings.title':          'What shows on your new tab',
+    'settings.title':          'Settings',
     'settings.quickSites.name': 'Quick sites bar',
     'settings.quickSites.desc': 'Pin the sites you use most. Turning this off only hides the bar — nothing you pinned is lost.',
     'settings.searchBox.name':  'Search box',
     'settings.searchBox.desc':  'Search straight from the new tab, using your own default search engine.',
+
+    'settings.shortcut.name':   'Open shortcut',
+    'settings.shortcut.desc':   "Opens Guilong in one keystroke. Chrome doesn't let an extension change its own shortcut, so this is read-only — click through to Chrome's page to set one; it updates here when you come back.",
+    'settings.shortcut.change': 'Set it',
+    'settings.shortcut.unset':  'Not set',
+
+    'key.space':                'Space',
 
     'section.openTabs':        'Open tabs',
     'section.savedForLater':   'Saved for later',
@@ -285,6 +304,7 @@ const STRINGS = {
     'toast.confirmCloseAll':   'Close {n} tabs? Click again to confirm',
     'toast.closedAll':         'Closed {n} tabs',
     'toast.closedExtras':      'Closed extra Guilong tabs',
+    'toast.shortcutUnavailable': "Couldn't open Chrome's shortcuts page — type chrome://extensions/shortcuts in the address bar",
 
     'dupeBanner.text':         'You have <strong>{count}</strong> Guilong tabs open. Keep just this one?',
     'dupeBanner.action':       'Close extras',

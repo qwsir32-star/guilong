@@ -78,6 +78,21 @@
       </span>
       <input type="checkbox" class="setting-switch" data-setting="showSearchBox">
     </label>
+
+    <!-- 快捷键 —— 这一行**不是开关**，所以用 div 而不是 label：
+         点整行不该有任何反应。
+         ⚠️ Chrome 的 commands API 只能读、不能写（commands.update 是 Firefox
+         才有的），扩展没有办法设定或修改自己的快捷键。所以这里给的是
+         「当前绑定 + 一个跳到 Chrome 快捷键页面的按钮」。
+         #shortcutKeys 的文字由 renderShortcutSetting() 填，不写死在这里。 -->
+    <div class="setting-row setting-row-static">
+      <span class="setting-text">
+        <span class="setting-name" data-i18n="settings.shortcut.name"></span>
+        <span class="setting-desc" data-i18n="settings.shortcut.desc"></span>
+      </span>
+      <kbd class="shortcut-keys" id="shortcutKeys"></kbd>
+      <button class="action-btn" data-action="change-shortcut" data-i18n="settings.shortcut.change"></button>
+    </div>
   </div>
 
   <!-- ================================================================
