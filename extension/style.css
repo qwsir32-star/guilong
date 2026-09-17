@@ -105,6 +105,9 @@ header {
 .quick-site {
   position: relative;
   width: 76px;
+  /* 拖拽排序时不要顺手把标签文字选中，蓝色选区会跟着鼠标走一路 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .quick-site-open {
@@ -170,8 +173,9 @@ header {
   color: var(--ink);
 }
 
-/* 右上角的 ×，hover 才出现 */
-.quick-site-remove {
+/* 右上角两个小工具按钮，hover 才出现。
+   同一个位置按类型放不同的第一个按钮：钉住的给「编辑」，自动的给「钉住」。 */
+.quick-site-tool {
   position: absolute;
   top: 0;
   right: 2px;
@@ -190,19 +194,59 @@ header {
   transition: opacity 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.quick-site-remove svg {
+/* 第一个工具按钮（编辑 / 钉住）摆在 × 左边 */
+.quick-site-tool:not(.quick-site-remove) {
+  right: 21px;
+}
+
+.quick-site-tool svg {
   width: 10px;
   height: 10px;
 }
 
-.quick-site:hover .quick-site-remove {
+.quick-site:hover .quick-site-tool {
   opacity: 1;
+}
+
+.quick-site-tool:hover {
+  color: var(--ink);
+  border-color: var(--ink);
 }
 
 .quick-site-remove:hover {
   color: var(--status-abandoned);
   border-color: var(--status-abandoned);
 }
+
+/* ---- 拖拽排序 ----
+   只有带 draggable="true" 的（手动钉住的）能给抓手光标。
+   拖动过程中不移动 DOM，只在目标位置画一根竖线。 */
+.quick-site[draggable="true"] .quick-site-open {
+  cursor: grab;
+}
+
+body.dragging-site,
+body.dragging-site .quick-site-open {
+  cursor: grabbing;
+}
+
+.quick-site.dragging {
+  opacity: 0.35;
+}
+
+.quick-site.drop-before::before,
+.quick-site.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent-sage);
+}
+
+.quick-site.drop-before::before { left: -2px; }
+.quick-site.drop-after::after   { right: -2px; }
 
 /* ＋ 那个空格子，尺寸和站点图标对齐 */
 .quick-site-add {
@@ -250,6 +294,13 @@ header {
   border: 1px solid var(--warm-gray);
   border-radius: 8px;
   background: var(--card-bg);
+}
+
+.pin-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 2px;
 }
 
 .pin-field {

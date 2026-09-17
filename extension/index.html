@@ -36,8 +36,9 @@
   <div class="quick-sites" id="quickSites">
     <div class="quick-sites-list" id="quickSitesList"></div>
 
-    <!-- 手动钉住：点 ＋ 展开。填入链接后自动抓名称和图标，两个都能改。 -->
+    <!-- 手动钉住 / 编辑已有入口，共用这一张表单 -->
     <div class="quick-site-form" id="quickSiteForm" style="display:none">
+      <p class="pin-title" id="pinFormTitle">钉住一个网站</p>
       <div class="pin-field">
         <label for="quickSiteInput">链接</label>
         <input type="text" id="quickSiteInput" placeholder="github.com，或粘贴完整链接"
@@ -56,7 +57,7 @@
       <div class="pin-actions">
         <span class="pin-hint" id="pinHint"></span>
         <button class="action-btn" data-action="cancel-pin-site">取消</button>
-        <button class="action-btn primary" data-action="pin-site">钉住</button>
+        <button class="action-btn primary" id="pinSubmitBtn" data-action="pin-site">钉住</button>
       </div>
     </div>
   </div>

@@ -711,6 +711,100 @@ async function unpinSite(url) {
   });
 }
 
+/**
+ * updatePinnedSite(originalUrl, {url, title, icon}) — 改一条已钉住的
+ *
+ * 就地改，**不移动数组位置** —— 用户改的是内容不是顺序，顺序由拖拽负责，
+ * 改个名字就跳到末尾会很莫名其妙。
+ *
+ * @returns {Promise<{ok: boolean, reason?: 'bad-url'|'missing'|'duplicate'}>}
+ */
+async function updatePinnedSite(originalUrl, { url, title, icon } = {}) {
+  const href = normalizeSiteUrl(url);
+  if (!href) return { ok: false, reason: 'bad-url' };
+
+  const pinned = await getPinnedSites();
+  const idx    = pinned.findIndex(s => sameEntryUrl(s.url, originalUrl));
+  if (idx === -1) return { ok: false, reason: 'missing' };
+
+  // 改了链接之后可能跟别人撞上（自己除外）
+  if (pinned.some((s, i) => i !== idx && sameEntryUrl(s.url, href))) {
+    return { ok: false, reason: 'duplicate' };
+  }
+
+  pinned[idx] = {
+    ...pinned[idx],
+    url:   href,
+    title: (title || '').trim(),
+    icon:  (icon || '').trim(),
+  };
+  await chrome.storage.local.set({ [PINNED_SITES_KEY]: pinned });
+
+  // 换了个站点之后，新站如果原本在「不再显示」名单里，得放出来
+  const key    = siteKey(href);
+  const hidden = await getHiddenTopSiteKeys();
+  if (hidden.includes(key)) {
+    await chrome.storage.local.set({ [HIDDEN_TOP_SITES_KEY]: hidden.filter(k => k !== key) });
+  }
+  return { ok: true };
+}
+
+/**
+ * movePinnedSite(fromUrl, targetUrl, after) — 拖拽重排
+ *
+ * 只动 pinnedSites 数组的顺序；每一项的 title / icon / addedAt 原样保留。
+ * 拖到某个自动补的站点上时，targetUrl 在 pinnedSites 里找不到，插入位置自然
+ * 落到末尾 —— 也就是「钉住的都在前、自动的都在后」这条规则。
+ *
+ * @returns {Promise<boolean>} 顺序是否真的变了
+ */
+async function movePinnedSite(fromUrl, targetUrl, after) {
+  const pinned = await getPinnedSites();
+  const order  = pinned.map(s => s.url);
+
+  const fromIdx = order.findIndex(u => sameEntryUrl(u, fromUrl));
+  if (fromIdx === -1) return false;
+
+  const [moved] = order.splice(fromIdx, 1);
+
+  let insertAt = order.length;   // 默认落到钉住区末尾
+  if (targetUrl) {
+    const tIdx = order.findIndex(u => sameEntryUrl(u, targetUrl));
+    if (tIdx !== -1) insertAt = after ? tIdx + 1 : tIdx;
+  }
+  order.splice(insertAt, 0, moved);
+
+  if (order.every((u, i) => u === pinned[i].url)) return false;   // 位置没变，别白写一次
+
+  const next = order.map(u => pinned.find(s => s.url === u)).filter(Boolean);
+  await chrome.storage.local.set({ [PINNED_SITES_KEY]: next });
+  return true;
+}
+
+/**
+ * promoteTopSite(url) — 把自动补的站点钉下来（顺序追加到末尾）
+ * 钉完之后它就能拖了。
+ */
+async function promoteTopSite(url) {
+  const href = normalizeSiteUrl(url);
+  if (!href) return { ok: false, reason: 'bad-url' };
+
+  const pinned = await getPinnedSites();
+  if (pinned.some(s => sameEntryUrl(s.url, href))) return { ok: false, reason: 'duplicate' };
+
+  // 名称沿用当前显示的，图标留空（继续吃站点 favicon）
+  const shown = (await getQuickSites()).find(s => sameEntryUrl(s.url, href));
+
+  pinned.push({
+    url:     href,
+    title:   shown ? shown.title : '',
+    icon:    shown ? shown.icon : '',
+    addedAt: new Date().toISOString(),
+  });
+  await chrome.storage.local.set({ [PINNED_SITES_KEY]: pinned });
+  return { ok: true };
+}
+
 async function hideTopSite(url) {
   const key = siteKey(url);
   if (!key) return;
@@ -1262,6 +1356,9 @@ const ICONS = {
   // 「存入待办」—— 收件箱箭头朝下，比 focus 那个朝右上角的箭头贴题
   save:    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3.75H6.912a2.25 2.25 0 0 0-2.15 1.588L2.35 13.177a2.25 2.25 0 0 0-.1.661V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 0 0-2.15-1.588H15M2.25 13.5h3.86a2.25 2.25 0 0 1 2.012 1.244l.256.512a2.25 2.25 0 0 0 2.013 1.244h3.218a2.25 2.25 0 0 0 2.013-1.244l.256-.512a2.25 2.25 0 0 1 2.013-1.244h3.859M12 3v8.25m0 0-3-3m3 3 3-3" /></svg>`,
   plus:    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>`,
+  // 「钉住」用书签，比地图图钉更贴近「收进自己的收藏」
+  pin:     `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" /></svg>`,
+  edit:    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg>`,
 };
 
 
@@ -1635,20 +1732,39 @@ function renderQuickSite(site) {
   const label     = siteLabel(site);
   const { img, letter, host } = resolveSiteIcon(site, label);
   const safeLabel = escapeAttr(label);
+  const safeUrl   = escapeAttr(site.url);
+
+  // 只有手动钉住的能拖：整行的顺序就是 pinnedSites 数组的顺序，
+  // 自动补的那些来自 Chrome 的历史热度，用户没「拥有」它们，顺序也就不该由拖拽决定。
+  //
+  // 属性同时挂在外层 .quick-site 和里层 .quick-site-open 上：抓手区域基本被这个
+  // 大按钮盖满，而浏览器在 <button> 上按下时不一定愿意往上找可拖拽的祖先。
+  // 里层自己声明了 draggable，无论浏览器走不走那条「向上查找」，拖拽都能起来；
+  // dragstart 冒泡到 document，处理器再 closest('.quick-site') 取回整张卡片。
+  const dragAttrs = site.pinned ? ' draggable="true"' : '';
+
+  // 同一个位置按类型放不同的第一个按钮：钉住的给「编辑」，自动的给「钉住」
+  // （自动项没有可编辑的东西，而用户想让它留在这一行就得先钉下来）。
+  const primaryBtn = site.pinned
+    ? `<button class="quick-site-tool" data-action="edit-pinned-site"
+               data-site-url="${safeUrl}" title="编辑">${ICONS.edit}</button>`
+    : `<button class="quick-site-tool" data-action="pin-auto-site"
+               data-site-url="${safeUrl}" title="钉住这个网站">${ICONS.pin}</button>`;
 
   return `
-    <div class="quick-site">
+    <div class="quick-site" data-site-url="${safeUrl}"${dragAttrs}>
       <button class="quick-site-open" data-action="open-quick-site"
-              data-site-url="${escapeAttr(site.url)}"
-              title="${safeLabel} · 打开 ${escapeAttr(site.url)}">
+              data-site-url="${safeUrl}"${dragAttrs}
+              title="${safeLabel} · 打开 ${safeUrl}">
         <span class="quick-site-icon">
           <span class="quick-site-letter${letter.length > 1 ? ' is-text' : ''}">${escapeAttr(letter)}</span>
           ${img ? `<img src="${escapeAttr(img)}" data-favicon${host ? ` data-host="${escapeAttr(host)}"` : ''} alt="">` : ''}
         </span>
         <span class="quick-site-label">${safeLabel}</span>
       </button>
-      <button class="quick-site-remove" data-action="remove-quick-site"
-              data-site-url="${escapeAttr(site.url)}"
+      ${primaryBtn}
+      <button class="quick-site-tool quick-site-remove" data-action="remove-quick-site"
+              data-site-url="${safeUrl}"
               data-site-pinned="${site.pinned ? '1' : '0'}"
               title="${site.pinned ? '取消钉住' : '不再显示'}">
         ${ICONS.close}
@@ -1700,8 +1816,64 @@ function resetPinForm() {
     el.value = '';
     delete el.dataset.touched;   // 清掉「用户改过」标记，下一个链接重新抓
   });
+  const form = document.getElementById('quickSiteForm');
+  if (form) delete form.dataset.editingUrl;
   setPinHint('');
   renderPinIconPreview();
+}
+
+/**
+ * openPinForm(entry)
+ *
+ * entry 省略 = 新增一个钉住；给了就是编辑那一张已经钉住的卡片。
+ * 两种模式共用同一个表单，靠 form.dataset.editingUrl 区分：
+ * 有值说明在编辑，提交时走 updatePinnedSite 而不是 pinSite。
+ */
+function openPinForm(entry) {
+  const form = document.getElementById('quickSiteForm');
+  if (!form) return;
+
+  resetPinForm();
+
+  const btn      = document.getElementById('pinSubmitBtn');
+  const titleEl  = document.getElementById('pinFormTitle');
+  const nameEl   = document.getElementById('pinNameInput');
+
+  if (entry) {
+    form.dataset.editingUrl = entry.url;
+    const urlEl = document.getElementById('quickSiteInput');
+    if (urlEl) urlEl.value = entry.url;
+    if (nameEl) {
+      nameEl.value = entry.title || '';
+      // 编辑时名称是既成事实，别让自动抓取把它冲掉
+      nameEl.dataset.touched = '1';
+    }
+    const icoEl = document.getElementById('pinIconInput');
+    if (icoEl) icoEl.value = entry.icon || '';
+
+    if (btn)     btn.textContent     = '保存';
+    if (titleEl) titleEl.textContent = '编辑这个入口';
+
+    // 名称和图标都是用户已有的内容，只提示链接可以改
+    setPinHint('链接、名称、图标都能改。改了链接会把这一项指到新地址。');
+  } else {
+    if (btn)     btn.textContent     = '钉住';
+    if (titleEl) titleEl.textContent = '钉住一个网站';
+  }
+
+  renderPinIconPreview();
+  form.style.display = 'flex';
+
+  if (!entry) {
+    const urlEl = document.getElementById('quickSiteInput');
+    if (urlEl) urlEl.focus();
+  }
+}
+
+function closePinForm() {
+  const form = document.getElementById('quickSiteForm');
+  if (form) form.style.display = 'none';
+  resetPinForm();
 }
 
 function setPinHint(text) {
@@ -2022,6 +2194,9 @@ document.addEventListener('click', async (e) => {
 
   // ---- 常用站点：打开（该站已有标签页就切过去，没有才新开）----
   if (action === 'open-quick-site') {
+    // 拖完手一松，浏览器还可能补一个 click，别让它把站点打开了
+    if (Date.now() - siteDragEndedAt < 400) return;
+
     const url = actionEl.dataset.siteUrl;
     if (!url) return;
     await openOrFocusSite(url);
@@ -2045,35 +2220,49 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
-  // ---- 常用站点：展开 / 收起手动钉住的表单 ----
+  // ---- 常用站点：展开 / 收起表单（新增） ----
   if (action === 'toggle-pin-input') {
     const form = document.getElementById('quickSiteForm');
     if (!form) return;
 
-    const opening = form.style.display === 'none';
-    if (opening) {
-      resetPinForm();
-      form.style.display = 'flex';
-      const input = document.getElementById('quickSiteInput');
-      if (input) input.focus();
-    } else {
-      form.style.display = 'none';
-    }
+    if (form.style.display === 'none') openPinForm(null);
+    else closePinForm();
     return;
   }
 
   if (action === 'cancel-pin-site') {
-    const form = document.getElementById('quickSiteForm');
-    if (form) form.style.display = 'none';
-    resetPinForm();
+    closePinForm();
     return;
   }
 
-  // ---- 常用站点：钉住（链接 + 名称 + 图标）----
+  // ---- 常用站点：编辑一个已钉住的入口 ----
+  if (action === 'edit-pinned-site') {
+    const url    = actionEl.dataset.siteUrl;
+    const pinned = await getPinnedSites();
+    const entry  = pinned.find(s => sameEntryUrl(s.url, url));
+    if (entry) openPinForm(entry);
+    return;
+  }
+
+  // ---- 常用站点：把自动补的站点钉下来（钉完就能拖了）----
+  if (action === 'pin-auto-site') {
+    const res = await promoteTopSite(actionEl.dataset.siteUrl);
+    if (!res.ok) {
+      showToast(res.reason === 'duplicate' ? '这个入口已经钉住了' : '网址看起来不太对');
+      return;
+    }
+    await renderQuickSites();
+    showToast('已钉住，现在可以拖动排序');
+    return;
+  }
+
+  // ---- 常用站点：提交表单（新增或编辑）----
   if (action === 'pin-site') {
+    const form   = document.getElementById('quickSiteForm');
     const urlEl  = document.getElementById('quickSiteInput');
     const nameEl = document.getElementById('pinNameInput');
     const icoEl  = document.getElementById('pinIconInput');
+    const editingUrl = form ? form.dataset.editingUrl : '';
 
     const href = normalizeSiteUrl(urlEl ? urlEl.value : '');
     if (!href) {
@@ -2085,22 +2274,24 @@ document.addEventListener('click', async (e) => {
     let name = nameEl ? nameEl.value.trim() : '';
     if (!name) name = (await suggestSiteName(href)).name;
 
-    const res = await pinSite({
-      url:   href,
-      title: name,
-      icon:  icoEl ? icoEl.value.trim() : '',
-    });
+    const payload = { url: href, title: name, icon: icoEl ? icoEl.value.trim() : '' };
+
+    const res = editingUrl
+      ? await updatePinnedSite(editingUrl, payload)
+      : await pinSite(payload);
 
     if (!res.ok) {
-      showToast(res.reason === 'duplicate' ? '这个入口已经在上面了' : '网址看起来不太对');
+      showToast(
+        res.reason === 'duplicate' ? '这个入口已经在上面了'
+      : res.reason === 'missing'   ? '这一项已经不在了'
+      :                              '网址看起来不太对'
+      );
       return;
     }
 
-    const form = document.getElementById('quickSiteForm');
-    if (form) form.style.display = 'none';
-    resetPinForm();
+    closePinForm();
     await renderQuickSites();
-    showToast('已钉住');
+    showToast(editingUrl ? '已保存' : '已钉住');
     return;
   }
 
@@ -2453,6 +2644,85 @@ document.addEventListener('input', (e) => {
 
   if (id === 'pinIconInput') renderPinIconPreview();
 });
+
+
+/* ---------------- 站点条拖拽排序 ----------------
+   只有手动钉住的卡片带 draggable="true"（见 renderQuickSite）。
+   拖动过程中**不移动 DOM**：把正在被拖的节点挪走会让浏览器取消这次拖拽，
+   所以改成在目标位置画一根竖线（.drop-before / .drop-after），松手了再落盘重排。
+   ------------------------------------------------ */
+
+let dragEntryUrl   = null;
+let siteDragEndedAt = 0;
+
+function quickSiteTile(node) {
+  return node && node.closest ? node.closest('.quick-site') : null;
+}
+
+function clearDropMarks() {
+  document.querySelectorAll('.quick-site.drop-before, .quick-site.drop-after')
+    .forEach(t => t.classList.remove('drop-before', 'drop-after'));
+}
+
+function endSiteDrag() {
+  dragEntryUrl = null;
+  clearDropMarks();
+  document.body.classList.remove('dragging-site');
+  document.querySelectorAll('.quick-site.dragging').forEach(t => t.classList.remove('dragging'));
+  siteDragEndedAt = Date.now();
+}
+
+document.addEventListener('dragstart', (e) => {
+  const tile = quickSiteTile(e.target);
+  if (!tile || tile.getAttribute('draggable') !== 'true') return;
+
+  dragEntryUrl = tile.dataset.siteUrl || '';
+  if (!dragEntryUrl) return;
+
+  tile.classList.add('dragging');
+  document.body.classList.add('dragging-site');
+  try {
+    e.dataTransfer.setData('text/plain', dragEntryUrl);
+    e.dataTransfer.effectAllowed = 'move';
+  } catch { /* 某些环境没给 dataTransfer，不影响后面的重排 */ }
+});
+
+document.addEventListener('dragover', (e) => {
+  if (!dragEntryUrl) return;
+
+  const tile = quickSiteTile(e.target);
+  if (!tile || tile.dataset.siteUrl === dragEntryUrl) return;
+
+  // 不 preventDefault 就不允许 drop
+  e.preventDefault();
+  try { e.dataTransfer.dropEffect = 'move'; } catch {}
+
+  clearDropMarks();
+  const r = tile.getBoundingClientRect();
+  tile.classList.add(e.clientX > r.left + r.width / 2 ? 'drop-after' : 'drop-before');
+});
+
+document.addEventListener('drop', async (e) => {
+  if (!dragEntryUrl) return;
+  e.preventDefault();
+
+  const tile   = quickSiteTile(e.target);
+  const from   = dragEntryUrl;
+  const target = tile ? (tile.dataset.siteUrl || '') : '';
+  const after  = tile ? tile.classList.contains('drop-after') : false;
+
+  endSiteDrag();
+
+  if (!target || target === from) return;   // 拖回原位，不动
+
+  const moved = await movePinnedSite(from, target, after);
+  if (moved) {
+    await renderQuickSites();
+    showToast('已调整顺序');
+  }
+});
+
+document.addEventListener('dragend', endSiteDrag);
 
 // ---- Archive toggle — expand/collapse the archive section ----
 document.addEventListener('click', (e) => {
