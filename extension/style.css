@@ -58,12 +58,19 @@ body::before {
 header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  /* 问候语是两行、搜索框是一行、齿轮是个小按钮，居中对齐比顶对齐耐看。
+     justify-content 仍然留着 space-between：搜索框在设置里被关掉之后，
+     问候语和齿轮还得各靠一边。 */
+  align-items: center;
   /* 原本是 48px，靠 .quick-sites 自己 -24px 收回来。改成 24px 是因为页头和
-     站点条之间现在还夹着设置面板和搜索框，负边距那套在这个结构下会打架。 */
+     站点条之间现在夹着设置面板，负边距那套在这个结构下会打架。 */
   margin-bottom: 24px;
   padding-bottom: 24px;
   border-bottom: 1px solid var(--warm-gray);
+}
+
+.header-left {
+  flex-shrink: 0;   /* 空间紧张时先挤搜索框，别把问候语挤成两行 */
 }
 
 .header-left h1 {
@@ -195,18 +202,25 @@ header {
 .setting-switch:checked::after { transform: translateX(17px); }
 .setting-switch:focus-visible { outline: 2px solid var(--accent-sage); outline-offset: 2px; }
 
-/* ---- 搜索框 ---- */
+/* ---- 搜索框（页头中间那一段）----
+   flex:1 让它去吸收问候语和齿轮之间的全部空档，max-width 再把它收住 ——
+   不然在宽屏上会拉成一条接近 1000px 的长条，比原来那个单独一行更臃肿。
+   收住之后剩下的空档由 margin:auto 平分，于是它自动落在中间。
+   搜索框被设置关掉时整块 display:none，页头靠 space-between 恢复成
+   「问候语靠左、齿轮靠右」。 */
 .search-bar {
-  margin: 0 0 30px;
+  flex: 1;
+  min-width: 0;
+  max-width: 540px;
+  margin: 0 auto;
 }
 
 .search-form {
   display: flex;
   align-items: center;
   gap: 12px;
-  max-width: 580px;
-  margin: 0 auto;
-  padding: 13px 20px;
+  width: 100%;
+  padding: 12px 20px;
   border: 1px solid var(--warm-gray);
   border-radius: 28px;
   background: var(--card-bg);

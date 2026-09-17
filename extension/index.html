@@ -27,6 +27,22 @@
       <div class="date" id="dateDisplay" data-page-node-id="qJGhesamgO1rSM0VCIiGUy"></div>
     </div>
 
+    <!-- ================================================================
+         搜索框 —— 和问候语同一行，省掉一整条纵向空间。
+         输入网址就直接打开，否则交给默认搜索引擎。
+         ================================================================ -->
+    <div class="search-bar" id="searchBar">
+      <form class="search-form" id="searchForm">
+        <span class="search-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+        </span>
+        <input type="text" class="search-input" id="searchInput"
+               placeholder="搜索，或输入网址直接打开" autocomplete="off" spellcheck="false">
+      </form>
+    </div>
+
     <!-- 设置入口特意放在页头：站点条被关掉之后，这里仍然能把设置叫回来。
          如果齿轮跟着站点条一起被隐藏，用户就再也找不到开关了。 -->
     <button class="header-settings" id="settingsToggle" data-action="toggle-settings"
@@ -62,21 +78,6 @@
       </span>
       <input type="checkbox" class="setting-switch" data-setting="showSearchBox">
     </label>
-  </div>
-
-  <!-- ================================================================
-       搜索框 —— 输入网址就直接打开，否则交给默认搜索引擎
-       ================================================================ -->
-  <div class="search-bar" id="searchBar">
-    <form class="search-form" id="searchForm">
-      <span class="search-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-        </svg>
-      </span>
-      <input type="text" class="search-input" id="searchInput"
-             placeholder="搜索，或输入网址直接打开" autocomplete="off" spellcheck="false">
-    </form>
   </div>
 
   <!-- ================================================================
