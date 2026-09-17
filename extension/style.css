@@ -1156,3 +1156,46 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   opacity: 0.6;
   flex-shrink: 0;
 }
+
+/* ---- 归档条目的删除按钮（与 .deferred-dismiss 同款观感）---- */
+.archive-delete {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0.3;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.archive-delete svg {
+  width: 13px;
+  height: 13px;
+}
+
+.archive-delete:hover {
+  opacity: 1;
+  color: var(--status-abandoned);
+}
+
+/* 归档条目删除时的滑出动画 */
+.archive-item.removing {
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* ---- 「关闭全部」的确认态：颜色加重，明确区分于普通态 ---- */
+.action-btn.close-tabs.confirming {
+  background: rgba(200, 113, 58, 0.18);
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+  font-weight: 600;
+  animation: confirm-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes confirm-pulse {
+  0%, 100% { background: rgba(200, 113, 58, 0.18); }
+  50%      { background: rgba(200, 113, 58, 0.30); }
+}

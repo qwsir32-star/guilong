@@ -60,6 +60,38 @@ async function updateBadge() {
   }
 }
 
+// ─── 快捷键：呼出 / 聚焦仪表盘 ───────────────────────────────────────────────
+
+/**
+ * focusOrOpenDashboard()
+ *
+ * 快捷键触发时调用。已经开着 Tab Out 就切过去（跨窗口也行），
+ * 没开就新建一个。
+ *
+ * 为什么不用 ⌘+1：那是 Chrome 的保留快捷键，扩展既注册不了也覆盖不了。
+ * 用户可以在 chrome://extensions/shortcuts 里改成自己顺手的键。
+ */
+async function focusOrOpenDashboard() {
+  const dashboardUrl = chrome.runtime.getURL('index.html');
+
+  const tabs = await chrome.tabs.query({});
+  const existing = tabs.find(t => t.url === dashboardUrl || t.url === 'chrome://newtab/');
+
+  if (existing) {
+    await chrome.tabs.update(existing.id, { active: true });
+    await chrome.windows.update(existing.windowId, { focused: true });
+    return;
+  }
+
+  await chrome.tabs.create({ url: dashboardUrl });
+}
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== 'open-dashboard') return;
+  focusOrOpenDashboard();
+});
+
+
 // ─── Event listeners ──────────────────────────────────────────────────────────
 
 // Update badge when the extension is first installed

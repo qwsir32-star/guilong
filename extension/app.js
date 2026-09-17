@@ -583,9 +583,33 @@ const FRIENDLY_DOMAINS = {
   'www.huggingface.co':   'Hugging Face',
   'producthunt.com':      'Product Hunt',
   'www.producthunt.com':  'Product Hunt',
-  'xiaohongshu.com':      'RedNote',
-  'www.xiaohongshu.com':  'RedNote',
-  'local-files':          'Local Files',
+
+  // ---- 中文站点 ----
+  // 这些站点的子域由下面的 SITE_MERGE_RULES 归并成一张卡，
+  // 所以主域名的显示名在这里定义一次就够了。
+  'bilibili.com':         'B站',
+  'zhihu.com':            '知乎',
+  'weibo.com':            '微博',
+  'douban.com':           '豆瓣',
+  'juejin.cn':            '掘金',
+  'sspai.com':            '少数派',
+  'csdn.net':             'CSDN',
+  '36kr.com':             '36氪',
+  'jianshu.com':          '简书',
+  'taobao.com':           '淘宝',
+  'jd.com':               '京东',
+  'baidu.com':            '百度',
+  'tieba.baidu.com':      '百度贴吧',
+  'pan.baidu.com':        '百度网盘',
+  'music.163.com':        '网易云音乐',
+  'y.qq.com':             'QQ音乐',
+  'weread.qq.com':        '微信读书',
+  'mp.weixin.qq.com':     '公众号后台',
+  'docs.qq.com':          '腾讯文档',
+  'xiaohongshu.com':      '小红书',
+  'www.xiaohongshu.com':  '小红书',
+
+  'local-files':          '本地文件',
 };
 
 function friendlyDomain(hostname) {
@@ -599,9 +623,12 @@ function friendlyDomain(hostname) {
     return capitalize(hostname.replace('.github.io', '')) + ' (GitHub Pages)';
   }
 
+  // 注意：长后缀必须排在短后缀前面，否则 juejin.com.cn 会只被剥掉 .cn，
+  // 剩下的 "juejin.com" 会被拆成 "Juejin Com"。原来的列表还缺 .cn，
+  // 导致所有中文站显示成 "Juejin Cn" 这种观感。
   let clean = hostname
     .replace(/^www\./, '')
-    .replace(/\.(com|org|net|io|co|ai|dev|app|so|me|xyz|info|us|uk|co\.uk|co\.jp)$/, '');
+    .replace(/\.(com\.cn|net\.cn|org\.cn|gov\.cn|co\.uk|co\.jp|com|org|net|io|co|ai|dev|app|so|me|xyz|info|tech|site|shop|club|live|cloud|top|vip|fun|cc|tv|us|uk|cn)$/, '');
 
   return clean.split('.').map(part => capitalize(part)).join(' ');
 }
@@ -609,6 +636,51 @@ function friendlyDomain(hostname) {
 function capitalize(str) {
   if (!str) return '';
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * SITE_MERGE_RULES — 把同一站点的不同子域归并成一张卡片
+ *
+ * 为什么需要：分组是按 hostname 做的，所以 www.bilibili.com 和
+ * search.bilibili.com 会变成两张卡，内容却属于同一个站点。
+ *
+ * 匹配用最长后缀（hostnameEndsWith），所以一条 '.bilibili.com'
+ * 就覆盖 www / search / space / t / message / live 全部子域。
+ * 显示名走 FRIENDLY_DOMAINS[groupKey]，也就是上面定义的「B站」。
+ *
+ * 想加自己的规则不用改这个文件：写进 config.local.js 的
+ * LOCAL_CUSTOM_GROUPS 即可，那里优先级更高，能覆盖这里的规则。
+ */
+const SITE_MERGE_RULES = [
+  { hostnameEndsWith: '.bilibili.com',     groupKey: 'bilibili.com'    },
+  { hostnameEndsWith: '.zhihu.com',        groupKey: 'zhihu.com'       },
+  { hostnameEndsWith: '.weibo.com',        groupKey: 'weibo.com'       },
+  { hostnameEndsWith: '.douban.com',       groupKey: 'douban.com'      },
+  { hostnameEndsWith: '.juejin.cn',        groupKey: 'juejin.cn'       },
+  { hostnameEndsWith: '.sspai.com',        groupKey: 'sspai.com'       },
+  { hostnameEndsWith: '.csdn.net',         groupKey: 'csdn.net'        },
+  { hostnameEndsWith: '.36kr.com',         groupKey: '36kr.com'        },
+  { hostnameEndsWith: '.jianshu.com',      groupKey: 'jianshu.com'     },
+  { hostnameEndsWith: '.taobao.com',       groupKey: 'taobao.com'      },
+  { hostnameEndsWith: '.jd.com',           groupKey: 'jd.com'          },
+  { hostnameEndsWith: '.xiaohongshu.com',  groupKey: 'xiaohongshu.com' },
+];
+
+/**
+ * matchSiteMerge(url) — 命中归并规则时返回规则本身，否则返回 null
+ */
+function matchSiteMerge(url) {
+  let hostname;
+  try { hostname = new URL(url).hostname; }
+  catch { return null; }
+
+  return SITE_MERGE_RULES.find(r =>
+    r.hostname
+      ? hostname === r.hostname
+      // 裸主域（bilibili.com）本身也要命中，不能只匹配 '.bilibili.com'
+      : hostname === r.hostnameEndsWith.slice(1) ||
+        hostname.endsWith(r.hostnameEndsWith)
+  ) || null;
 }
 
 function stripTitleNoise(title) {
@@ -1000,6 +1072,9 @@ function renderArchiveItem(item) {
         ${item.title || item.url}
       </a>
       <span class="archive-item-date">${ago}</span>
+      <button class="archive-delete" data-action="delete-archived" data-deferred-id="${item.id}" title="从归档中删除">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+      </button>
     </div>`;
 }
 
@@ -1099,6 +1174,17 @@ async function renderStaticDashboard() {
       if (customRule) {
         const key = customRule.groupKey;
         if (!groupMap[key]) groupMap[key] = { domain: key, label: customRule.groupLabel, tabs: [] };
+        groupMap[key].tabs.push(tab);
+        continue;
+      }
+
+      // 然后是内置的子域归并规则（www.bilibili.com + search.bilibili.com
+      // 合成一张「B站」卡）。放在自定义规则之后，所以 config.local.js
+      // 里的规则可以覆盖内置规则。
+      const mergeRule = matchSiteMerge(tab.url);
+      if (mergeRule) {
+        const key = mergeRule.groupKey;
+        if (!groupMap[key]) groupMap[key] = { domain: key, merged: true, tabs: [] };
         groupMap[key].tabs.push(tab);
         continue;
       }
@@ -1340,6 +1426,27 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  // ---- 从归档里删除一条 ----
+  // 复用现成的 dismissed 字段：getSavedTabs() 会把 dismissed 的条目从
+  // active 和 archived 两个列表里同时过滤掉，所以这里不需要新的数据逻辑。
+  if (action === 'delete-archived') {
+    const id = actionEl.dataset.deferredId;
+    if (!id) return;
+
+    await dismissSavedTab(id);
+
+    const item = actionEl.closest('.archive-item');
+    if (item) {
+      item.classList.add('removing');
+      setTimeout(() => {
+        item.remove();
+        renderDeferredColumn(); // 归档清空时整块会自动收起来
+      }, 300);
+    }
+    showToast('已从归档删除');
+    return;
+  }
+
   // ---- Close all tabs in a domain group ----
   if (action === 'close-domain-tabs') {
     const domainId = actionEl.dataset.domainId;
@@ -1350,8 +1457,11 @@ document.addEventListener('click', async (e) => {
 
     const urls      = group.tabs.map(t => t.url);
     // Landing pages and custom groups (whose domain key isn't a real hostname)
-    // must use exact URL matching to avoid closing unrelated tabs
-    const useExact  = group.domain === '__landing-pages__' || !!group.label;
+    // must use exact URL matching to avoid closing unrelated tabs.
+    // merged=true 是子域归并出来的组：组名是主域，但组内的 tabs 只覆盖
+    // 该站点的部分子域。若按 hostname 匹配，会连带关掉同一站点下没被
+    // 归并进来的标签页（例如同站的 landing page），所以也必须精确匹配。
+    const useExact  = group.domain === '__landing-pages__' || group.merged || !!group.label;
 
     if (useExact) {
       await closeTabsExact(urls);
@@ -1412,11 +1522,29 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
-  // ---- Close ALL open tabs ----
+  // ---- Close ALL open tabs（两段式确认，防误触）----
   if (action === 'close-all-open-tabs') {
-    const allUrls = openTabs
-      .filter(t => t.url && !t.url.startsWith('chrome') && !t.url.startsWith('about:'))
-      .map(t => t.url);
+    const targets = openTabs.filter(t => t.url && !t.url.startsWith('chrome') && !t.url.startsWith('about:'));
+
+    // 第一次点击：只进入确认态，一个标签页都不动
+    if (actionEl.dataset.confirming !== '1') {
+      const originalHtml = actionEl.innerHTML;
+      actionEl.dataset.confirming = '1';
+      actionEl.classList.add('confirming');
+      actionEl.innerHTML = `${ICONS.close}确认关闭 ${targets.length} 个标签页？再点一次`;
+
+      // 5 秒无操作自动复位，避免按钮一直挂在危险状态上
+      setTimeout(() => {
+        if (!actionEl.isConnected) return;
+        actionEl.dataset.confirming = '';
+        actionEl.classList.remove('confirming');
+        actionEl.innerHTML = originalHtml;
+      }, 5000);
+      return;
+    }
+
+    // 第二次点击：才真的关
+    const allUrls = targets.map(t => t.url);
     await closeTabsByUrls(allUrls);
     playCloseSound();
 
@@ -1428,7 +1556,7 @@ document.addEventListener('click', async (e) => {
       animateCardOut(c);
     });
 
-    showToast('All tabs closed. Fresh start.');
+    showToast(`已关闭 ${allUrls.length} 个标签页`);
     return;
   }
 });
