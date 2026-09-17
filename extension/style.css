@@ -73,9 +73,23 @@ header {
   border-bottom: 1px solid var(--warm-gray);
 }
 
+/* 三个孩子都**显式指定栏位**，绝不能依赖自动排布。
+   搜索框被设置关掉时是 display:none，会直接从这个网格里消失，
+   后面的齿轮于是被自动排布顶进中间那一栏 —— 用户看到的就是
+   「反复开关搜索框，右上角的齿轮左右跳」。
+   写死栏位之后，中间那栏空着也还是空着，齿轮稳稳待在第三栏。 */
 .header-left {
+  grid-column: 1;
   justify-self: start;
   min-width: 0;   /* 配合 minmax(0,1fr)，空间紧张时允许它收缩 */
+}
+
+.search-bar {
+  grid-column: 2;
+}
+
+.header-settings {
+  grid-column: 3;
 }
 
 /* 窄屏放不下三栏：问候语和齿轮留在第一行，搜索框自己独占第二行 */
