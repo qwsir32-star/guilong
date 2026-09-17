@@ -446,6 +446,76 @@ function sameEntryUrl(a, b) {
 }
 
 /**
+ * isSiteRoot(url) — 这是不是「网站首页」
+ *
+ * 只有裸主域才算（github.com、www.bilibili.com/）。带路径或查询的一律不算：
+ * douyu.com/6657?dyshid=... 是「玩机器直播间」，不是斗鱼首页。
+ * 这一条是区分「官网」和「个性化页面」的依据 —— 两者的默认名称来源不一样。
+ */
+function isSiteRoot(url) {
+  try {
+    const u = new URL(url);
+    return u.pathname.replace(/\/+$/, '') === '' && !u.search && !u.hash;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * pathHintOf(url) — 从路径 / 查询里抠一个能看的提示词
+ *   github.com/features/actions → 'features/actions'
+ *   douyu.com/6657?dyshid=xxx   → '6657'
+ */
+function pathHintOf(url) {
+  const clip = s => (s.length > 24 ? s.slice(0, 24) + '…' : s);
+  try {
+    const u = new URL(url);
+    let path = '';
+    try { path = decodeURIComponent(u.pathname); } catch { path = u.pathname; }
+    path = path.replace(/^\/+|\/+$/g, '');
+    if (path) return clip(path);
+
+    for (const [, v] of u.searchParams) {
+      if (v) return clip(v);
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * suggestSiteName(url) — 自动抓一个建议名称
+ *
+ * 优先级：
+ *   1. 网站首页     → FRIENDLY_DOMAINS 的友好名（github.com → GitHub、bilibili.com → B站）
+ *   2. 具体页面且正开着 → 用那一页的网页标题（最贴近「这页到底是什么」）
+ *   3. 兜底         → 友好名 + 路径提示（Douyu · 6657）
+ *
+ * 第 3 条的意义是**不要让人误以为这是首页**：光写「Douyu」，用户点下去发现是
+ * 某个直播间会莫名其妙。带上路径提示至少诚实。
+ *
+ * @returns {Promise<{name: string, source: 'root'|'tab'|'guess'}>}
+ */
+async function suggestSiteName(url) {
+  const host     = hostnameOf(url);
+  const friendly = friendlyDomain(host);
+
+  if (isSiteRoot(url)) {
+    return { name: friendly || host, source: 'root' };
+  }
+
+  // 这一页要是正开着，它的标题是最好的名称来源，且不需要任何额外权限
+  await fetchOpenTabs();
+  const open     = openTabs.find(t => t.url && sameEntryUrl(t.url, url));
+  const tabTitle = open ? stripTitleNoise(open.title || '').trim() : '';
+  if (tabTitle) return { name: tabTitle, source: 'tab' };
+
+  const hint = pathHintOf(url);
+  return { name: hint ? `${friendly} · ${hint}` : friendly, source: 'guess' };
+}
+
+/**
  * normalizeSiteUrl(raw) — 把用户随手输的东西凑成一个能用的 URL
  *
  * 「github.com」→「https://github.com/」
@@ -476,20 +546,56 @@ function normalizeSiteUrl(raw) {
 /**
  * siteLabel(site) — 图标下面那行字
  *
- * 优先用 FRIENDLY_DOMAINS 里的友好名（bilibili.com → B站）。
- * 但图标底下只有 76px 宽，友好名超过 12 个字符就装不下（会被 CSS 截成省略号）。
- * 认不出的长域名正好是 friendlyDomain 猜得最难看的一类（news.ycombinator.co.uk
- * → "News Ycombinator"），这时候改用站点自己的标题，通常更短也更贴合用户叫法。
+ * 两类来源的取名逻辑不一样：
+ *
+ * **手动钉住的**：名称是用户填过（或系统抓来给他改过）的，直接用它 ——
+ * 这是用户对这个入口的称呼，不能被域名猜出来的名字顶掉。
+ *
+ * **自动补的**：title 是网页标题，又长又带噪音（"哔哩哔哩 (゜-゜)つロ 干杯~"），
+ * 优先用 FRIENDLY_DOMAINS 的友好名。认不出的长域名正好是 friendlyDomain 猜得
+ * 最难看的（news.ycombinator.co.uk → "News Ycombinator"），这时候退回网页标题。
+ *
+ * 图标底下只有 76px 宽，超过 12 个字符会被 CSS 截成省略号，这里先手动截一道，
+ * 免得截断位置落在半个字上。
  */
 function siteLabel(site) {
-  const host     = hostnameOf(site.url);
-  const friendly = friendlyDomain(host);
-  const title    = (site.title || '').trim();
+  const host  = hostnameOf(site.url);
+  const title = (site.title || '').trim();
+  const clip  = s => (s.length > 12 ? s.slice(0, 12) + '…' : s);
 
-  if (friendly.length > 12 && title) {
-    return title.length > 12 ? title.slice(0, 12) + '…' : title;
+  if (site.pinned) {
+    return clip(title) || friendlyDomain(host) || host;
   }
-  return friendly || title || host;
+
+  const friendly = friendlyDomain(host);
+  if (friendly && friendly.length <= 12) return friendly;
+  return clip(title) || friendly || host;
+}
+
+/**
+ * resolveSiteIcon(site, label) — 算出这个站点该显示什么图标
+ *
+ * site.icon 有三种含义：
+ *   留空          → 自动，用站点 favicon
+ *   http(s) 地址  → 用这张图
+ *   1-2 个字符    → 拿文字当图标
+ *
+ * @returns {{ img: string, letter: string, host: string }}
+ *          host 只在自动 favicon 时才给（失败要退到 google s2 才需要它）
+ */
+function resolveSiteIcon(site, label) {
+  const icon  = (site.icon || '').trim();
+  const first = ((label || '?').match(/[A-Za-z0-9\u4e00-\u9fa5]/) || ['?'])[0].toUpperCase();
+
+  if (!icon) {
+    return { img: faviconUrlFor(site.url, 32), letter: first, host: hostnameOf(site.url) };
+  }
+  if (/^https?:\/\//i.test(icon)) {
+    // 自定义图挂了就直接删掉，别退 s2 —— 那是给站点 favicon 用的服务，
+    // 拿它去查这张自定义图的域名只会得到一张更不相干的图。
+    return { img: icon, letter: first, host: '' };
+  }
+  return { img: '', letter: icon.slice(0, 2), host: '' };
 }
 
 /**
@@ -560,28 +666,31 @@ async function getHiddenTopSiteKeys() {
 }
 
 /**
- * pinSite(raw) — 手动钉住一个站点
+ * pinSite({url, title, icon}) — 手动钉住一个入口
+ *
  * @returns {Promise<{ok: boolean, reason?: 'bad-url'|'duplicate'}>}
  */
-async function pinSite(raw, title) {
-  const href = normalizeSiteUrl(raw);
+async function pinSite({ url, title, icon } = {}) {
+  const href = normalizeSiteUrl(url);
   if (!href) return { ok: false, reason: 'bad-url' };
 
-  const key    = siteKey(href);
   const pinned = await getPinnedSites();
-  if (pinned.some(s => siteKey(s.url) === key)) return { ok: false, reason: 'duplicate' };
+
+  // 去重按「入口」而不是按 hostname。按 hostname 去重会把同站的具体页面全部挡掉：
+  // 钉了 github.com 之后 github.com/features/actions 就再也钉不上来了（用户实测报过）。
+  // 官网和它的某个具体页面是两个不同的入口，都该允许存在。
+  if (pinned.some(s => sameEntryUrl(s.url, href))) return { ok: false, reason: 'duplicate' };
 
   pinned.push({
     url:     href,
-    // 用户手输网址时没有页面标题可拿，就留空，显示名交给 siteLabel 兜底。
-    // 这里不预填 friendlyDomain 的结果，否则会在 siteLabel 里被当成「站点标题」
-    // 再截断一次，反而更难看。
     title:   (title || '').trim(),
+    icon:    (icon || '').trim(),
     addedAt: new Date().toISOString(),
   });
   await chrome.storage.local.set({ [PINNED_SITES_KEY]: pinned });
 
-  // 钉住等于「我想看见它」，所以顺手把它从「不再显示」名单里放出来
+  // 钉住等于「我想看见它」，所以顺手把该站从「不再显示」名单里放出来
+  const key    = siteKey(href);
   const hidden = await getHiddenTopSiteKeys();
   if (hidden.includes(key)) {
     await chrome.storage.local.set({ [HIDDEN_TOP_SITES_KEY]: hidden.filter(k => k !== key) });
@@ -589,11 +698,16 @@ async function pinSite(raw, title) {
   return { ok: true };
 }
 
+/**
+ * unpinSite(url) — 取消钉住
+ *
+ * 同样按「入口」匹配：同时钉了 github.com 和 github.com/features/actions 时，
+ * 点其中一个的 × 只该删掉那一个，不能按 hostname 把两个一起删了。
+ */
 async function unpinSite(url) {
-  const key    = siteKey(url);
   const pinned = await getPinnedSites();
   await chrome.storage.local.set({
-    [PINNED_SITES_KEY]: pinned.filter(s => siteKey(s.url) !== key),
+    [PINNED_SITES_KEY]: pinned.filter(s => !sameEntryUrl(s.url, url)),
   });
 }
 
@@ -614,14 +728,16 @@ async function hideTopSite(url) {
 async function getQuickSites() {
   const [pinned, hiddenKeys] = await Promise.all([getPinnedSites(), getHiddenTopSiteKeys()]);
 
-  const seen  = new Set();
-  const sites = [];
+  const seenEntries = new Set();   // 已显示的入口 URL，防手动钉重
+  const seenKeys    = new Set();   // 已显示的站点 hostname，防自动部分重复补
+  const sites       = [];
 
   for (const s of pinned) {
-    const key = siteKey(s.url);
-    if (!key || seen.has(key)) continue;   // 存量数据可能有重复，渲染时挡一道
-    seen.add(key);
-    sites.push({ url: s.url, title: s.title, pinned: true });
+    const href = normalizeSiteUrl(s.url);
+    if (!href || seenEntries.has(href)) continue;   // 存量数据可能有重复，渲染时挡一道
+    seenEntries.add(href);
+    seenKeys.add(siteKey(href));
+    sites.push({ url: href, title: s.title, icon: s.icon || '', pinned: true });
   }
 
   let top = [];
@@ -644,11 +760,11 @@ async function getQuickSites() {
     if (!url) continue;
 
     const key = siteKey(url);
-    if (!key || seen.has(key) || hiddenKeys.includes(key)) continue;
+    if (!key || seenKeys.has(key) || hiddenKeys.includes(key)) continue;
 
-    seen.add(key);
+    seenKeys.add(key);
     autoAdded += 1;
-    sites.push({ url, title: item.title || '', pinned: false });
+    sites.push({ url, title: item.title || '', icon: '', pinned: false });
   }
 
   return sites;
@@ -1516,21 +1632,18 @@ async function renderQuickSites() {
  * 不会出现「破图」那种观感。
  */
 function renderQuickSite(site) {
-  const host      = hostnameOf(site.url);
   const label     = siteLabel(site);
-  const initial   = ((label.match(/[A-Za-z0-9\u4e00-\u9fa5]/) || ['?'])[0]).toUpperCase();
-  const favicon   = faviconUrlFor(site.url, 32);
+  const { img, letter, host } = resolveSiteIcon(site, label);
   const safeLabel = escapeAttr(label);
-  const safeHost  = escapeAttr(host);
 
   return `
-    <div class="quick-site" data-site-key="${escapeAttr(siteKey(site.url))}">
+    <div class="quick-site">
       <button class="quick-site-open" data-action="open-quick-site"
               data-site-url="${escapeAttr(site.url)}"
               title="${safeLabel} · 打开 ${escapeAttr(site.url)}">
         <span class="quick-site-icon">
-          <span class="quick-site-letter">${escapeAttr(initial)}</span>
-          <img src="${escapeAttr(favicon)}" data-favicon data-host="${safeHost}" alt="">
+          <span class="quick-site-letter${letter.length > 1 ? ' is-text' : ''}">${escapeAttr(letter)}</span>
+          ${img ? `<img src="${escapeAttr(img)}" data-favicon${host ? ` data-host="${escapeAttr(host)}"` : ''} alt="">` : ''}
         </span>
         <span class="quick-site-label">${safeLabel}</span>
       </button>
@@ -1568,6 +1681,113 @@ async function openOrFocusSite(url) {
 
   await chrome.tabs.create({ url });
   return 'opened';
+}
+
+
+/* ---------------- 钉住表单 ----------------
+   三个字段：链接 / 名称 / 图标。
+   填入链接后自动抓名称和图标填进去，用户想改随时改。
+   「链接」变了才会重新抓，用户手改过的字段不被覆盖 —— 改一半被后台抓取冲掉
+   会很想打人。
+   ------------------------------------------ */
+
+let pinSuggestTimer = null;
+
+function resetPinForm() {
+  ['quickSiteInput', 'pinNameInput', 'pinIconInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = '';
+    delete el.dataset.touched;   // 清掉「用户改过」标记，下一个链接重新抓
+  });
+  setPinHint('');
+  renderPinIconPreview();
+}
+
+function setPinHint(text) {
+  const el = document.getElementById('pinHint');
+  if (el) el.textContent = text || '';
+}
+
+/** 图标预览 —— 把「图标」字段的值 + 当前链接解析成一个小方块，所见即所得 */
+function renderPinIconPreview() {
+  const box    = document.getElementById('pinIconPreview');
+  if (!box) return;
+
+  const urlEl  = document.getElementById('quickSiteInput');
+  const icoEl  = document.getElementById('pinIconInput');
+  const nameEl = document.getElementById('pinNameInput');
+
+  const href  = urlEl  ? urlEl.value.trim()  : '';
+  const raw   = icoEl  ? icoEl.value.trim()  : '';
+  const label = nameEl ? nameEl.value.trim() : '';
+  const first = ((label.match(/[A-Za-z0-9\u4e00-\u9fa5]/) || ['?'])[0]).toUpperCase();
+
+  let img = '';
+  let letter = first;
+
+  if (/^https?:\/\//i.test(raw)) {
+    img = raw;
+  } else if (raw) {
+    letter = raw.slice(0, 2);
+  } else if (normalizeSiteUrl(href)) {
+    // 只有链接能解析成合法站点时才去取 favicon，否则会发一个必然失败的请求
+    img = faviconUrlFor(href, 32);
+  }
+
+  box.innerHTML =
+    `<span class="quick-site-letter${letter.length > 1 ? ' is-text' : ''}">${escapeAttr(letter)}</span>` +
+    (img ? `<img src="${escapeAttr(img)}" alt="">` : '');
+
+  const imgEl = box.querySelector('img');
+  if (imgEl) imgEl.onerror = () => imgEl.remove();
+}
+
+/**
+ * applyPinSuggestion() — 链接字段变化后，抓一份建议的名称填进去
+ *
+ * 名称只在用户没手动改过时才覆盖。图标字段永远不自动填 ——
+ * 它留空就代表「自动」，预览里已经显示了自动抓到的图标，填进去反而变成
+ * 「强制用这张图」，之后站点换图标就跟不上了。
+ */
+async function applyPinSuggestion() {
+  const urlEl  = document.getElementById('quickSiteInput');
+  const nameEl = document.getElementById('pinNameInput');
+  if (!urlEl || !nameEl) return;
+
+  const raw  = urlEl.value.trim();
+  if (!raw) {
+    if (nameEl.dataset.touched !== '1') nameEl.value = '';
+    setPinHint('');
+    renderPinIconPreview();
+    return;
+  }
+
+  const href = normalizeSiteUrl(raw);
+  if (!href) {
+    if (nameEl.dataset.touched !== '1') nameEl.value = '';
+    setPinHint('网址看起来不太对');
+    renderPinIconPreview();
+    return;
+  }
+
+  // 这个函数由 setTimeout 调起，抛出去没人接，所以自己兜住
+  let suggestion;
+  try {
+    suggestion = await suggestSiteName(href);
+  } catch (err) {
+    console.warn('[tab-out] 自动抓取站点名称失败:', err);
+    return;
+  }
+
+  if (nameEl.dataset.touched !== '1') nameEl.value = suggestion.name;
+  renderPinIconPreview();
+
+  setPinHint(
+    suggestion.source === 'root'  ? '识别为网站首页，名称和图标都是自动抓的'
+  : suggestion.source === 'tab'   ? '识别为具体页面，已用它的网页标题当名称'
+  :                                 '识别为具体页面，建议改个名字，免得看起来像首页'
+  );
 }
 
 
@@ -1825,36 +2045,60 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
-  // ---- 常用站点：展开 / 收起手动钉住的输入框 ----
+  // ---- 常用站点：展开 / 收起手动钉住的表单 ----
   if (action === 'toggle-pin-input') {
-    const form  = document.getElementById('quickSiteForm');
-    const input = document.getElementById('quickSiteInput');
+    const form = document.getElementById('quickSiteForm');
     if (!form) return;
 
     const opening = form.style.display === 'none';
-    form.style.display = opening ? 'flex' : 'none';
-    if (opening && input) { input.value = ''; input.focus(); }
+    if (opening) {
+      resetPinForm();
+      form.style.display = 'flex';
+      const input = document.getElementById('quickSiteInput');
+      if (input) input.focus();
+    } else {
+      form.style.display = 'none';
+    }
     return;
   }
 
   if (action === 'cancel-pin-site') {
     const form = document.getElementById('quickSiteForm');
     if (form) form.style.display = 'none';
+    resetPinForm();
     return;
   }
 
-  // ---- 常用站点：钉住 ----
+  // ---- 常用站点：钉住（链接 + 名称 + 图标）----
   if (action === 'pin-site') {
-    const input = document.getElementById('quickSiteInput');
-    const res   = await pinSite(input ? input.value : '');
+    const urlEl  = document.getElementById('quickSiteInput');
+    const nameEl = document.getElementById('pinNameInput');
+    const icoEl  = document.getElementById('pinIconInput');
+
+    const href = normalizeSiteUrl(urlEl ? urlEl.value : '');
+    if (!href) {
+      showToast('网址看起来不太对');
+      return;
+    }
+
+    // 名称留空就现抓一次：用户可能在自动抓取的防抖还没跑完时就按了回车
+    let name = nameEl ? nameEl.value.trim() : '';
+    if (!name) name = (await suggestSiteName(href)).name;
+
+    const res = await pinSite({
+      url:   href,
+      title: name,
+      icon:  icoEl ? icoEl.value.trim() : '',
+    });
 
     if (!res.ok) {
-      showToast(res.reason === 'duplicate' ? '这个网站已经在上面了' : '网址看起来不太对');
+      showToast(res.reason === 'duplicate' ? '这个入口已经在上面了' : '网址看起来不太对');
       return;
     }
 
     const form = document.getElementById('quickSiteForm');
     if (form) form.style.display = 'none';
+    resetPinForm();
     await renderQuickSites();
     showToast('已钉住');
     return;
@@ -2172,9 +2416,11 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-// ---- 常用站点：输入框里回车提交、Esc 收起 ----
+// ---- 常用站点：表单里回车提交、Esc 收起 ----
+const PIN_FIELD_IDS = ['quickSiteInput', 'pinNameInput', 'pinIconInput'];
+
 document.addEventListener('keydown', (e) => {
-  if (!e.target || e.target.id !== 'quickSiteInput') return;
+  if (!e.target || !PIN_FIELD_IDS.includes(e.target.id)) return;
 
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -2184,6 +2430,28 @@ document.addEventListener('keydown', (e) => {
     const form = document.getElementById('quickSiteForm');
     if (form) form.style.display = 'none';
   }
+});
+
+// ---- 常用站点：填链接时自动抓名称和图标 ----
+document.addEventListener('input', (e) => {
+  const id = e.target && e.target.id;
+
+  // 链接变了才重新抓。防抖是因为这个过程中要查一次标签页，不适合每敲一个字跑一次。
+  if (id === 'quickSiteInput') {
+    clearTimeout(pinSuggestTimer);
+    pinSuggestTimer = setTimeout(applyPinSuggestion, 300);
+    renderPinIconPreview();
+    return;
+  }
+
+  // 名称：用户一动手就记下「改过了」，之后链接再怎么变都不覆盖它
+  if (id === 'pinNameInput') {
+    e.target.dataset.touched = '1';
+    renderPinIconPreview();
+    return;
+  }
+
+  if (id === 'pinIconInput') renderPinIconPreview();
 });
 
 // ---- Archive toggle — expand/collapse the archive section ----

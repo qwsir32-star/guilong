@@ -36,11 +36,28 @@
   <div class="quick-sites" id="quickSites">
     <div class="quick-sites-list" id="quickSitesList"></div>
 
-    <!-- 手动钉住：点 ＋ 展开，回车或点「钉住」提交 -->
+    <!-- 手动钉住：点 ＋ 展开。填入链接后自动抓名称和图标，两个都能改。 -->
     <div class="quick-site-form" id="quickSiteForm" style="display:none">
-      <input type="text" id="quickSiteInput" placeholder="输入网址，例如 github.com" autocomplete="off" spellcheck="false">
-      <button class="action-btn primary" data-action="pin-site">钉住</button>
-      <button class="action-btn" data-action="cancel-pin-site">取消</button>
+      <div class="pin-field">
+        <label for="quickSiteInput">链接</label>
+        <input type="text" id="quickSiteInput" placeholder="github.com，或粘贴完整链接"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div class="pin-field">
+        <label for="pinNameInput">名称</label>
+        <input type="text" id="pinNameInput" placeholder="自动抓取，可改" autocomplete="off">
+      </div>
+      <div class="pin-field">
+        <label for="pinIconInput">图标</label>
+        <input type="text" id="pinIconInput" placeholder="留空 = 自动；也可填图片地址，或 1-2 个字"
+               autocomplete="off" spellcheck="false">
+        <div class="pin-icon-preview" id="pinIconPreview"></div>
+      </div>
+      <div class="pin-actions">
+        <span class="pin-hint" id="pinHint"></span>
+        <button class="action-btn" data-action="cancel-pin-site">取消</button>
+        <button class="action-btn primary" data-action="pin-site">钉住</button>
+      </div>
     </div>
   </div>
 

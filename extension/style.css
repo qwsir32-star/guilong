@@ -239,31 +239,92 @@ header {
   font-size: 11px;
 }
 
-/* 手动钉住的输入行 —— 点 ＋ 才展开 */
+/* 手动钉住的表单 —— 点 ＋ 才展开。三行：链接 / 名称 / 图标 */
 .quick-site-form {
-  display: flex;
-  align-items: center;
+  display: flex;            /* JS 在 none / flex 之间切 */
+  flex-direction: column;
   gap: 8px;
   margin-top: 14px;
-  max-width: 470px;
+  max-width: 520px;
+  padding: 14px 16px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 8px;
+  background: var(--card-bg);
 }
 
-.quick-site-form input {
+.pin-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pin-field label {
+  width: 30px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pin-field input {
   flex: 1;
   min-width: 0;
   font-family: inherit;
   font-size: 12px;
-  padding: 6px 10px;
+  padding: 5px 9px;
   border: 1px solid var(--warm-gray);
   border-radius: 4px;
-  background: var(--card-bg);
+  background: var(--paper);
   color: var(--ink);
   outline: none;
   transition: border-color 0.15s;
 }
 
-.quick-site-form input:focus {
+.pin-field input:focus {
   border-color: var(--accent-sage);
+}
+
+/* 图标预览 —— 跟站点条里那个方块同一套观感，所见即所得 */
+.pin-icon-preview {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--paper);
+  border: 1px solid var(--warm-gray);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pin-icon-preview img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 5px;
+  background: var(--paper);
+}
+
+.pin-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.pin-hint {
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* 拿文字当图标时（1-2 个字）要小一号，否则撑不下 */
+.quick-site-letter.is-text {
+  font-size: 12px;
 }
 
 /* ---- Tab cleanup banner ---- */
