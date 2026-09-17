@@ -962,6 +962,11 @@ function part9() {
   check('源码里没有残留旧品牌名 Tab Out', brandLeak, []);
   check('manifest 用的是新名字', MANIFEST.name.includes('归拢'), true);
   check('manifest 的 action 标题也是新名字', MANIFEST.action.default_title, '归拢');
+  // 这条守卫是踩坑换来的：manifest 没有 key 时，Chrome 用**目录绝对路径**算扩展 ID，
+  // 改个目录名就会换 ID → chrome.storage 里的用户数据全部读不到。
+  // 删掉 key 不会有任何报错，只会静默丢数据，所以必须守住。
+  check('manifest 有固定 key（扩展 ID 不随目录名变）',
+    /^MII[A-Za-z0-9+/]{300,}={0,2}$/.test(MANIFEST.key || ''), true);
   check('LICENSE 保留了原始署名',
     /Copyright \(c\) 2026 Zara Zhang/.test(fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8')), true);
 }

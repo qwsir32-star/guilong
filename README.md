@@ -32,6 +32,23 @@ cd guilong
 
 > **改完代码记得这样做**：新标签页有缓存，只点扩展卡片上的刷新按钮不一定生效，要**关掉旧的新标签页重新开一个**。另外扩展需要 `topSites` / `favicon` / `search` 三项权限，重载时 Chrome 可能让你再确认一次。
 
+### 关于扩展 ID：`manifest.json` 里的 `key` 字段是干什么的
+
+**这一行别删。** 它把扩展 ID 固定住了。
+
+Chrome 给「加载已解压的扩展程序」分配的 ID，在 manifest 没有 `key` 字段时，是**由 `extension/` 文件夹的绝对路径算出来的**。也就是说：**你把仓库换个目录、改个名字，ID 就变了。** 而 `chrome.storage` 是按扩展 ID 分目录存的，于是你钉住的常用站点、「稍后再看」里的条目、设置开关会通通读不到 —— 数据并没有被删，只是换了抽屉，但表现出来就是「全没了」。
+
+有了 `key`，扩展 ID 就和路径无关：随便挪、随便改名、换台机器 clone 下来，都是同一个 ID。`tests/smoke.js` 里有一条守卫专门盯着这个字段，删掉会立刻变红。
+
+> 这对密钥是用下面两行生成的，记录在此以备将来重新生成：
+>
+> ```bash
+> openssl genrsa -out key.pem 2048
+> openssl rsa -in key.pem -pubout -outform DER | openssl base64 | tr -d '\n'
+> ```
+>
+> 公钥（一长串 `MII...`）公开无妨，写进 manifest 即可。**私钥不要提交到仓库** —— 只有打包 `.crx` 时才用得上，而这个项目直接 load unpacked，用不到它。
+
 ---
 
 ## 功能

@@ -6,3 +6,8 @@ docs/superpowers/
 
 # Personal config (landing page patterns, etc.) — never push to GitHub
 extension/config.local.js
+
+# 扩展签名私钥 —— 只在打包 .crx 时用得上，绝不要提交
+*.pem
+*.crx
+*.key
