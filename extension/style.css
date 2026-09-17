@@ -81,6 +81,191 @@ header {
   text-transform: uppercase;
 }
 
+/* ---- 常用站点条 ----
+   header 自带 48px 下边距，这里往上收 24px，免得这一条飘在中间。
+   每个站点 = 34px 圆角图标 + 下面一行小字，跟 Chrome 原生新标签页的快捷方式一个意思。 */
+.quick-sites {
+  margin: -24px 0 34px;
+}
+
+.quick-sites-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.quick-sites-hint {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
+  padding: 14px 8px 14px 0;
+}
+
+.quick-site {
+  position: relative;
+  width: 76px;
+}
+
+.quick-site-open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.quick-site-open:hover {
+  background: rgba(154, 145, 138, 0.1);
+}
+
+.quick-site-icon {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--warm-gray);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* 底下垫一层首字母。favicon 两条路都读不到时会被 onerror 删掉，露出这一层，
+   不会出现「破图」图标。 */
+.quick-site-letter {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.quick-site-icon img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 6px;
+  background: var(--card-bg);
+}
+
+.quick-site-label {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-site:hover .quick-site-label {
+  color: var(--ink);
+}
+
+/* 右上角的 ×，hover 才出现 */
+.quick-site-remove {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--warm-gray);
+  background: var(--card-bg);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.quick-site-remove svg {
+  width: 10px;
+  height: 10px;
+}
+
+.quick-site:hover .quick-site-remove {
+  opacity: 1;
+}
+
+.quick-site-remove:hover {
+  color: var(--status-abandoned);
+  border-color: var(--status-abandoned);
+}
+
+/* ＋ 那个空格子，尺寸和站点图标对齐 */
+.quick-site-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  width: 76px;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.quick-site-add:hover {
+  background: rgba(154, 145, 138, 0.1);
+  color: var(--ink);
+}
+
+.quick-site-add svg {
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px dashed var(--warm-gray);
+  background: var(--card-bg);
+}
+
+.quick-site-add-label {
+  font-size: 11px;
+}
+
+/* 手动钉住的输入行 —— 点 ＋ 才展开 */
+.quick-site-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  max-width: 470px;
+}
+
+.quick-site-form input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 4px;
+  background: var(--card-bg);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.quick-site-form input:focus {
+  border-color: var(--accent-sage);
+}
+
 /* ---- Tab cleanup banner ---- */
 .tab-cleanup-banner {
   background: linear-gradient(135deg, rgba(200, 113, 58, 0.04), rgba(200, 113, 58, 0.09));

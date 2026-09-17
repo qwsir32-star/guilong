@@ -364,6 +364,246 @@ async function saveAllOpenTabs({ closeAfter = false } = {}) {
 
 
 /* ----------------------------------------------------------------
+   常用站点（手动钉住 + chrome.topSites 自动补足）
+
+   为什么要有这一块：Tab Out 接管新标签页之后，Chrome 原生的那排
+   「快捷方式」就没了，用户原来靠它一键到常用网站，现在无路可走。
+   这里把那个能力找回来：手动钉的排前面并固定顺序，剩下的用
+   chrome.topSites 的历史热度自动补。
+
+   两个存储键：
+     pinnedSites    手动钉住，[{ url, title, addedAt }]
+     hiddenTopSites 自动部分里被用户叉掉的，存 siteKey 字符串数组
+   ---------------------------------------------------------------- */
+
+const PINNED_SITES_KEY     = 'pinnedSites';
+const HIDDEN_TOP_SITES_KEY = 'hiddenTopSites';
+const MAX_AUTO_SITES       = 10;
+
+/** hostnameOf(url) — 取不到就返回空串，绝不抛 */
+function hostnameOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch { return ''; }
+}
+
+/**
+ * siteKey(url) — 一个站点的身份，用于去重
+ *
+ * 用 hostname 而不是完整 URL：这一条里的图标代表的是「站点」，
+ * 不是「某个页面」。同一个站的不同页面只该有一个图标。
+ */
+function siteKey(url) {
+  return hostnameOf(url).toLowerCase();
+}
+
+/**
+ * normalizeSiteUrl(raw) — 把用户随手输的东西凑成一个能用的 URL
+ *
+ * 「github.com」→「https://github.com/」
+ * 「https://a.com/x」原样（规范化后）返回
+ * 凑不出来（空、只有空格、伪协议、没有点的裸词）→ null
+ */
+function normalizeSiteUrl(raw) {
+  let s = (raw || '').trim();
+  if (!s) return null;
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) {
+    // 已经带协议了，但只放行 http(s)，避免钉住 javascript: / data: 之类的伪协议
+    if (!/^https?:/i.test(s)) return null;
+  } else {
+    s = 'https://' + s;
+  }
+
+  try {
+    const u = new URL(s);
+    // 裸词（localhost、随便打的字）不算站点
+    if (!u.hostname || !u.hostname.includes('.')) return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * siteLabel(site) — 图标下面那行字
+ *
+ * 优先用 FRIENDLY_DOMAINS 里的友好名（bilibili.com → B站）。
+ * 但图标底下只有 76px 宽，友好名超过 12 个字符就装不下（会被 CSS 截成省略号）。
+ * 认不出的长域名正好是 friendlyDomain 猜得最难看的一类（news.ycombinator.co.uk
+ * → "News Ycombinator"），这时候改用站点自己的标题，通常更短也更贴合用户叫法。
+ */
+function siteLabel(site) {
+  const host     = hostnameOf(site.url);
+  const friendly = friendlyDomain(host);
+  const title    = (site.title || '').trim();
+
+  if (friendly.length > 12 && title) {
+    return title.length > 12 ? title.slice(0, 12) + '…' : title;
+  }
+  return friendly || title || host;
+}
+
+/**
+ * faviconUrlFor(url, size) — 图标地址
+ *
+ * 走 MV3 自带的 _favicon 端点：本地缓存、不发网络请求、不受墙影响。
+ * 需要一个 favicon 权限，已在 manifest.json 里声明。
+ * 读不到时会退到 google s2（见 handleFaviconError），再读不到就露出底下的首字母色块。
+ */
+function faviconUrlFor(url, size = 32) {
+  return `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(url)}&size=${size}`;
+}
+
+/**
+ * handleFaviconError(img) — favicon 加载失败时的兜底
+ *
+ * 第一步退到 google s2，第二步直接删掉 <img>，露出底下那层首字母色块
+ * （没有色块的地方就是干净地什么都不显示，不会留个「破图」）。
+ *
+ * 注意：**不能**写成 HTML 里的 onerror="..." —— MV3 扩展页面的默认 CSP 是
+ * `script-src 'self'`，内联事件处理器会被拦掉（控制台报 Refused to execute
+ * inline event handler），兜底等于没有。所以统一在渲染后用 JS 挂 onerror 属性。
+ */
+function handleFaviconError(img) {
+  const host = img.dataset.host;
+
+  if (img.dataset.fb !== '1' && host) {
+    img.dataset.fb = '1';
+    img.src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`;
+    return;
+  }
+  img.remove();
+}
+
+/**
+ * wireFaviconFallbacks(root) — 给 root 里所有 favicon 挂上失败兜底
+ *
+ * 渲染完同步调用即可：innerHTML 只是把 src 排进加载队列，图片的 error 事件
+ * 一定在之后的宏任务里才触发，所以这里挂监听不会漏掉。
+ */
+function wireFaviconFallbacks(root) {
+  if (!root) return;
+  root.querySelectorAll('img[data-favicon]').forEach(img => {
+    if (img.dataset.fbWired === '1') return;
+    img.dataset.fbWired = '1';
+    img.onerror = () => handleFaviconError(img);
+  });
+}
+
+/** escapeAttr(str) — 塞进 HTML 属性/文本前的转义。topSites 的标题来自任意网页，必须转 */
+function escapeAttr(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function getPinnedSites() {
+  const { pinnedSites = [] } = await chrome.storage.local.get(PINNED_SITES_KEY);
+  return Array.isArray(pinnedSites) ? pinnedSites : [];
+}
+
+async function getHiddenTopSiteKeys() {
+  const { hiddenTopSites = [] } = await chrome.storage.local.get(HIDDEN_TOP_SITES_KEY);
+  return Array.isArray(hiddenTopSites) ? hiddenTopSites : [];
+}
+
+/**
+ * pinSite(raw) — 手动钉住一个站点
+ * @returns {Promise<{ok: boolean, reason?: 'bad-url'|'duplicate'}>}
+ */
+async function pinSite(raw, title) {
+  const href = normalizeSiteUrl(raw);
+  if (!href) return { ok: false, reason: 'bad-url' };
+
+  const key    = siteKey(href);
+  const pinned = await getPinnedSites();
+  if (pinned.some(s => siteKey(s.url) === key)) return { ok: false, reason: 'duplicate' };
+
+  pinned.push({
+    url:     href,
+    // 用户手输网址时没有页面标题可拿，就留空，显示名交给 siteLabel 兜底。
+    // 这里不预填 friendlyDomain 的结果，否则会在 siteLabel 里被当成「站点标题」
+    // 再截断一次，反而更难看。
+    title:   (title || '').trim(),
+    addedAt: new Date().toISOString(),
+  });
+  await chrome.storage.local.set({ [PINNED_SITES_KEY]: pinned });
+
+  // 钉住等于「我想看见它」，所以顺手把它从「不再显示」名单里放出来
+  const hidden = await getHiddenTopSiteKeys();
+  if (hidden.includes(key)) {
+    await chrome.storage.local.set({ [HIDDEN_TOP_SITES_KEY]: hidden.filter(k => k !== key) });
+  }
+  return { ok: true };
+}
+
+async function unpinSite(url) {
+  const key    = siteKey(url);
+  const pinned = await getPinnedSites();
+  await chrome.storage.local.set({
+    [PINNED_SITES_KEY]: pinned.filter(s => siteKey(s.url) !== key),
+  });
+}
+
+async function hideTopSite(url) {
+  const key = siteKey(url);
+  if (!key) return;
+  const hidden = await getHiddenTopSiteKeys();
+  if (!hidden.includes(key)) {
+    hidden.push(key);
+    await chrome.storage.local.set({ [HIDDEN_TOP_SITES_KEY]: hidden });
+  }
+}
+
+/**
+ * getQuickSites() — 拼出站点条要显示的全部站点
+ * 手动钉住的在前（顺序就是用户钉的顺序），自动部分按 topSites 的热度顺序补足。
+ */
+async function getQuickSites() {
+  const [pinned, hiddenKeys] = await Promise.all([getPinnedSites(), getHiddenTopSiteKeys()]);
+
+  const seen  = new Set();
+  const sites = [];
+
+  for (const s of pinned) {
+    const key = siteKey(s.url);
+    if (!key || seen.has(key)) continue;   // 存量数据可能有重复，渲染时挡一道
+    seen.add(key);
+    sites.push({ url: s.url, title: s.title, pinned: true });
+  }
+
+  let top = [];
+  try {
+    top = (await chrome.topSites.get()) || [];
+  } catch (err) {
+    // 没授予 topSites 权限 / API 不可用 —— 降级成「只显示手动钉住的」，不要报错吓人
+    console.warn('[tab-out] 读不到 topSites，只显示手动钉住的站点:', err);
+    top = [];
+  }
+
+  let autoAdded = 0;
+  for (const item of top) {
+    if (autoAdded >= MAX_AUTO_SITES) break;
+
+    const url = item && item.url;
+    if (!url || !/^https?:/i.test(url)) continue;   // 跳过 chrome:// 之类
+
+    const key = siteKey(url);
+    if (!key || seen.has(key) || hiddenKeys.includes(key)) continue;
+
+    seen.add(key);
+    autoAdded += 1;
+    sites.push({ url, title: item.title || '', pinned: false });
+  }
+
+  return sites;
+}
+
+
+/* ----------------------------------------------------------------
    UI HELPERS
    ---------------------------------------------------------------- */
 
@@ -853,6 +1093,7 @@ const ICONS = {
   focus:   `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25" /></svg>`,
   // 「存入待办」—— 收件箱箭头朝下，比 focus 那个朝右上角的箭头贴题
   save:    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3.75H6.912a2.25 2.25 0 0 0-2.15 1.588L2.35 13.177a2.25 2.25 0 0 0-.1.661V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 0 0-2.15-1.588H15M2.25 13.5h3.86a2.25 2.25 0 0 1 2.012 1.244l.256.512a2.25 2.25 0 0 0 2.013 1.244h3.218a2.25 2.25 0 0 0 2.013-1.244l.256-.512a2.25 2.25 0 0 1 2.013-1.244h3.859M12 3v8.25m0 0-3-3m3 3 3-3" /></svg>`,
+  plus:    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>`,
 };
 
 
@@ -922,7 +1163,7 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
     try { domain = new URL(tab.url).hostname; } catch {}
     const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" data-favicon>` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
@@ -1003,7 +1244,7 @@ function renderDomainCard(group) {
     try { domain = new URL(tab.url).hostname; } catch {}
     const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
-      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" onerror="this.style.display='none'">` : ''}
+      ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" data-favicon>` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
       <div class="chip-actions">
         <button class="chip-action chip-save" data-action="defer-single-tab" data-tab-url="${safeUrl}" data-tab-title="${safeTitle}" title="Save for later">
@@ -1088,6 +1329,7 @@ async function renderDeferredColumn() {
     if (active.length > 0) {
       countEl.textContent = `${active.length} item${active.length !== 1 ? 's' : ''}`;
       list.innerHTML = active.map(item => renderDeferredItem(item)).join('');
+      wireFaviconFallbacks(list);
       list.style.display = 'block';
       empty.style.display = 'none';
     } else {
@@ -1142,7 +1384,7 @@ function renderDeferredItem(item) {
       <input type="checkbox" class="deferred-checkbox" data-action="check-deferred" data-deferred-id="${item.id}">
       <div class="deferred-info">
         <a href="${item.url}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
-          <img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" onerror="this.style.display='none'">${item.title || item.url}
+          <img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" data-favicon>${item.title || item.url}
         </a>
         <div class="deferred-meta">
           <span>${domain}</span>
@@ -1172,6 +1414,107 @@ function renderArchiveItem(item) {
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
       </button>
     </div>`;
+}
+
+
+/* ----------------------------------------------------------------
+   QUICK SITES — 常用站点条
+
+   一行图标 + 名字，点击就到。顺序：手动钉住的在前，topSites 自动补足。
+   每个图标右上角有个 ×，hover 才出现：手动钉的取消钉住，自动的加进隐藏名单。
+   ---------------------------------------------------------------- */
+
+/**
+ * renderQuickSites()
+ *
+ * 把站点条整个重画一遍。挂在 init 和每次钉住/移除之后 ——
+ * 打开/关闭标签页不影响这一条，所以不用跟着仪表盘一起重画。
+ */
+async function renderQuickSites() {
+  const listEl = document.getElementById('quickSitesList');
+  if (!listEl) return;
+
+  let sites = [];
+  try {
+    sites = await getQuickSites();
+  } catch (err) {
+    console.warn('[tab-out] 常用站点渲染失败:', err);
+  }
+
+  const addTile = `
+    <button class="quick-site-add" data-action="toggle-pin-input" title="钉住一个网站">
+      ${ICONS.plus}
+      <span class="quick-site-add-label">钉住</span>
+    </button>`;
+
+  if (sites.length === 0) {
+    listEl.innerHTML =
+      `<span class="quick-sites-hint">把常用网站钉在这里，以后一点就到</span>` + addTile;
+    return;
+  }
+
+  listEl.innerHTML = sites.map(s => renderQuickSite(s)).join('') + addTile;
+  wireFaviconFallbacks(listEl);
+}
+
+/**
+ * renderQuickSite(site) — 一个站点图标
+ *
+ * 图标底下垫一层首字母色块，favicon 两条路都读不到时会露出来，
+ * 不会出现「破图」那种观感。
+ */
+function renderQuickSite(site) {
+  const host      = hostnameOf(site.url);
+  const label     = siteLabel(site);
+  const initial   = ((label.match(/[A-Za-z0-9\u4e00-\u9fa5]/) || ['?'])[0]).toUpperCase();
+  const favicon   = faviconUrlFor(site.url, 32);
+  const safeLabel = escapeAttr(label);
+  const safeHost  = escapeAttr(host);
+
+  return `
+    <div class="quick-site" data-site-key="${escapeAttr(siteKey(site.url))}">
+      <button class="quick-site-open" data-action="open-quick-site"
+              data-site-url="${escapeAttr(site.url)}"
+              title="${safeLabel} · ${safeHost}">
+        <span class="quick-site-icon">
+          <span class="quick-site-letter">${escapeAttr(initial)}</span>
+          <img src="${escapeAttr(favicon)}" data-favicon data-host="${safeHost}" alt="">
+        </span>
+        <span class="quick-site-label">${safeLabel}</span>
+      </button>
+      <button class="quick-site-remove" data-action="remove-quick-site"
+              data-site-url="${escapeAttr(site.url)}"
+              data-site-pinned="${site.pinned ? '1' : '0'}"
+              title="${site.pinned ? '取消钉住' : '不再显示'}">
+        ${ICONS.close}
+      </button>
+    </div>`;
+}
+
+/**
+ * openOrFocusSite(url)
+ *
+ * 站点条点击的语义是「到那个站去」：该站已经有开着的标签页就切过去，
+ * 没有才新开一个。所以按 hostname 找，不是按精确 URL ——
+ * 点「B站」时用户在意的不是首页那个 URL，是「我要用到 B 站」。
+ */
+async function openOrFocusSite(url) {
+  if (!url) return 'none';
+
+  const key     = siteKey(url);
+  const allTabs = await chrome.tabs.query({});
+  // key 为空说明这个 URL 解析不出 hostname。此时按 hostname 找会把 file:// 之类的
+  // 标签页误当成同一个站（它们的 hostname 也是空），所以只能直接新开。
+  const match   = key ? allTabs.find(t => t.url && siteKey(t.url) === key) : null;
+
+  if (match) {
+    await chrome.tabs.update(match.id, { active: true });
+    if (match.windowId != null) await chrome.windows.update(match.windowId, { focused: true });
+    return 'focused';
+  }
+
+  await chrome.tabs.create({ url });
+  return 'opened';
 }
 
 
@@ -1351,6 +1694,7 @@ async function renderStaticDashboard() {
       openTabsActionsEl.style.display = 'flex';
     }
     openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
+    wireFaviconFallbacks(openTabsMissionsEl);
     openTabsSection.style.display = 'block';
   } else if (openTabsSection) {
     openTabsSection.style.display = 'none';
@@ -1368,6 +1712,8 @@ async function renderStaticDashboard() {
 }
 
 async function renderDashboard() {
+  // 站点条和打开的标签页无关，单独渲染一次就好，不用跟着仪表盘反复重画
+  await renderQuickSites();
   await renderStaticDashboard();
 }
 
@@ -1398,6 +1744,66 @@ document.addEventListener('click', async (e) => {
       setTimeout(() => { banner.style.display = 'none'; banner.style.opacity = '1'; }, 400);
     }
     showToast('Closed extra Tab Out tabs');
+    return;
+  }
+
+  // ---- 常用站点：打开（该站已有标签页就切过去，没有才新开）----
+  if (action === 'open-quick-site') {
+    const url = actionEl.dataset.siteUrl;
+    if (!url) return;
+    await openOrFocusSite(url);
+    return;
+  }
+
+  // ---- 常用站点：从这一行移除 ----
+  if (action === 'remove-quick-site') {
+    const url = actionEl.dataset.siteUrl;
+    if (!url) return;
+
+    if (actionEl.dataset.sitePinned === '1') {
+      await unpinSite(url);
+      showToast('已取消钉住');
+    } else {
+      // 自动补进来的没有「钉住」可取消，只能记进隐藏名单，不然下次刷新又冒出来
+      await hideTopSite(url);
+      showToast('不再显示这个站点');
+    }
+    await renderQuickSites();
+    return;
+  }
+
+  // ---- 常用站点：展开 / 收起手动钉住的输入框 ----
+  if (action === 'toggle-pin-input') {
+    const form  = document.getElementById('quickSiteForm');
+    const input = document.getElementById('quickSiteInput');
+    if (!form) return;
+
+    const opening = form.style.display === 'none';
+    form.style.display = opening ? 'flex' : 'none';
+    if (opening && input) { input.value = ''; input.focus(); }
+    return;
+  }
+
+  if (action === 'cancel-pin-site') {
+    const form = document.getElementById('quickSiteForm');
+    if (form) form.style.display = 'none';
+    return;
+  }
+
+  // ---- 常用站点：钉住 ----
+  if (action === 'pin-site') {
+    const input = document.getElementById('quickSiteInput');
+    const res   = await pinSite(input ? input.value : '');
+
+    if (!res.ok) {
+      showToast(res.reason === 'duplicate' ? '这个网站已经在上面了' : '网址看起来不太对');
+      return;
+    }
+
+    const form = document.getElementById('quickSiteForm');
+    if (form) form.style.display = 'none';
+    await renderQuickSites();
+    showToast('已钉住');
     return;
   }
 
@@ -1710,6 +2116,20 @@ document.addEventListener('click', async (e) => {
 
     showToast(`已关闭 ${allUrls.length} 个标签页`);
     return;
+  }
+});
+
+// ---- 常用站点：输入框里回车提交、Esc 收起 ----
+document.addEventListener('keydown', (e) => {
+  if (!e.target || e.target.id !== 'quickSiteInput') return;
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const btn = document.querySelector('.quick-site-form [data-action="pin-site"]');
+    if (btn) btn.click();
+  } else if (e.key === 'Escape') {
+    const form = document.getElementById('quickSiteForm');
+    if (form) form.style.display = 'none';
   }
 });
 

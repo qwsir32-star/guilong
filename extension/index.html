@@ -29,6 +29,22 @@
   </header>
 
   <!-- ================================================================
+       常用站点条 — 手动钉住的在前，chrome.topSites 自动补足
+       新标签页被 Tab Out 接管后，原来放首页的那排快捷入口会没掉，
+       这一条就是把它找回来。
+       ================================================================ -->
+  <div class="quick-sites" id="quickSites">
+    <div class="quick-sites-list" id="quickSitesList"></div>
+
+    <!-- 手动钉住：点 ＋ 展开，回车或点「钉住」提交 -->
+    <div class="quick-site-form" id="quickSiteForm" style="display:none">
+      <input type="text" id="quickSiteInput" placeholder="输入网址，例如 github.com" autocomplete="off" spellcheck="false">
+      <button class="action-btn primary" data-action="pin-site">钉住</button>
+      <button class="action-btn" data-action="cancel-pin-site">取消</button>
+    </div>
+  </div>
+
+  <!-- ================================================================
        TAB OUT DUPES BANNER — appears when you have extra Tab Out tabs open
        Hidden by default; app.js shows it when dupeTabOutCount > 1
        ================================================================ -->
