@@ -379,6 +379,8 @@ async function saveAllOpenTabs({ closeAfter = false } = {}) {
 const PINNED_SITES_KEY     = 'pinnedSites';
 const HIDDEN_TOP_SITES_KEY = 'hiddenTopSites';
 const MAX_AUTO_SITES       = 10;
+// 新标签页上各模块的开关（设置面板里那几个 toggle）
+const UI_PREFS_KEY         = 'uiPrefs';
 
 /** hostnameOf(url) — 取不到就返回空串，绝不抛 */
 function hostnameOf(url) {
@@ -1799,6 +1801,11 @@ async function renderQuickSites() {
   const listEl = document.getElementById('quickSitesList');
   if (!listEl) return;
 
+  // 开关关掉时直接不渲染，连 topSites 都不用去查。
+  // 注意只是不画，pinnedSites 一条都没动 —— 打开开关就原样回来。
+  const { showQuickSites } = await getUiPrefs();
+  if (!showQuickSites) return;
+
   let sites = [];
   try {
     sites = await getQuickSites();
@@ -2252,7 +2259,116 @@ async function renderStaticDashboard() {
   await renderDeferredColumn();
 }
 
+/* ----------------------------------------------------------------
+   新标签页模块开关 + 搜索框
+
+   开关只控制「显示不显示」，**绝不删数据** —— 关掉站点条之后，pinnedSites 和
+   hiddenTopSites 原样留在 storage 里，重新打开就都回来了。
+   ---------------------------------------------------------------- */
+
+/** 开关的默认值。以后要加新开关，在这里补一行就行（见 getUiPrefs 的合并逻辑） */
+const UI_PREFS_DEFAULTS = {
+  showQuickSites: true,   // 常用站点条
+  showSearchBox:  true,   // 搜索框
+};
+
+/**
+ * getUiPrefs() — 读出开关状态
+ *
+ * 跟默认值合并一层：这样以后新增开关时，老用户的存储里没有那个键，
+ * 读到的会是默认值而不是 undefined（undefined 会让 checkbox 处于半死状态）。
+ */
+async function getUiPrefs() {
+  const { [UI_PREFS_KEY]: saved } = await chrome.storage.local.get(UI_PREFS_KEY);
+  const prefs = (saved && typeof saved === 'object') ? saved : {};
+  return { ...UI_PREFS_DEFAULTS, ...prefs };
+}
+
+async function setUiPref(key, value) {
+  if (!(key in UI_PREFS_DEFAULTS)) return;   // 只认自己声明过的开关
+  const prefs = await getUiPrefs();
+  prefs[key] = !!value;
+  await chrome.storage.local.set({ [UI_PREFS_KEY]: prefs });
+}
+
+/** applyUiPrefs() — 把开关状态落到 DOM 上（显示/隐藏 + 同步开关自己的位置） */
+async function applyUiPrefs() {
+  const prefs = await getUiPrefs();
+
+  const quickBlock = document.getElementById('quickSites');
+  if (quickBlock) quickBlock.style.display = prefs.showQuickSites ? '' : 'none';
+
+  const searchBar = document.getElementById('searchBar');
+  if (searchBar) searchBar.style.display = prefs.showSearchBox ? '' : 'none';
+
+  // 开关自己的勾选状态也要跟上，否则重开页面时勾的位置和实际情况不符
+  document.querySelectorAll('input[data-setting]').forEach(input => {
+    const key = input.dataset.setting;
+    if (key in prefs) input.checked = !!prefs[key];
+  });
+
+  return prefs;
+}
+
+/**
+ * focusSearchBox() — 把光标放进搜索框
+ *
+ * 只在「打开一个新标签页」时调（见 renderDashboard），**不放在 applyUiPrefs 里** ——
+ * 后者也会被设置面板的开关触发，用户正点着开关时光标被抢到搜索框去很讨厌。
+ * 分工是：applyUiPrefs 管「显示成什么样」，聚焦管「打开时的默认动作」。
+ */
+function focusSearchBox() {
+  const input = document.getElementById('searchInput');
+  if (input) input.focus();
+}
+
+/** looksLikeUrl(text) — 输入的是网址还是搜索词 */
+function looksLikeUrl(text) {
+  if (/^https?:\/\//i.test(text)) return true;
+  if (/^localhost(:\d+)?(\/\S*)?$/i.test(text)) return true;
+  if (/\s/.test(text)) return false;                   // 带空格的一定不是网址
+  return /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(text);     // a.com / a.com/path
+}
+
+/**
+ * runSearch(raw) — 搜索框提交
+ *
+ * 输入的是网址就直接打开，否则交给**用户自己设置的默认搜索引擎** ——
+ * 用 chrome.search，不硬编码任何一家。换默认引擎、换浏览器都跟着走，
+ * 也不替用户决定该用哪家（这件事墙内墙外差别很大）。
+ */
+async function runSearch(raw) {
+  const text = (raw || '').trim();
+  if (!text) return;
+
+  if (looksLikeUrl(text)) {
+    const href = /^https?:\/\//i.test(text) ? text : `https://${text}`;
+    await chrome.tabs.create({ url: href });
+    return;
+  }
+
+  if (chrome.search && chrome.search.query) {
+    try {
+      // NEW_TAB：跟站点条的点击行为保持一致，不悄悄把当前这个仪表盘替掉
+      await chrome.search.query({ text, disposition: 'NEW_TAB' });
+      return;
+    } catch (err) {
+      console.warn('[tab-out] chrome.search 失败，退回必应:', err);
+    }
+  }
+
+  // chrome.search 是 Chrome 87+ 才有的。真取不到就退到必应 ——
+  // 不用 Google，国内直连打不开。
+  await chrome.tabs.create({ url: `https://www.bing.com/search?q=${encodeURIComponent(text)}` });
+}
+
 async function renderDashboard() {
+  // 先把开关状态落到 DOM 上：站点条可能整个被关掉，那样连渲染都不用做
+  const prefs = await applyUiPrefs();
+
+  // 光标尽早进去，别等下面那两步渲染完 —— 用户开了新标签页可能立刻就开始打字
+  if (prefs.showSearchBox) focusSearchBox();
+
   // 站点条和打开的标签页无关，单独渲染一次就好，不用跟着仪表盘反复重画
   await renderQuickSites();
   await renderStaticDashboard();
@@ -2285,6 +2401,18 @@ document.addEventListener('click', async (e) => {
       setTimeout(() => { banner.style.display = 'none'; banner.style.opacity = '1'; }, 400);
     }
     showToast('Closed extra Tab Out tabs');
+    return;
+  }
+
+  // ---- 设置面板：展开 / 收起 ----
+  if (action === 'toggle-settings') {
+    const panel  = document.getElementById('settingsPanel');
+    const toggle = document.getElementById('settingsToggle');
+    if (!panel) return;
+
+    const open = !panel.classList.contains('open');
+    panel.classList.toggle('open', open);
+    if (toggle) toggle.classList.toggle('open', open);
     return;
   }
 
@@ -2740,6 +2868,33 @@ document.addEventListener('input', (e) => {
   }
 
   if (id === 'pinIconInput') renderPinIconPreview();
+});
+
+// ---- 设置面板：开关一动就落盘并立刻生效 ----
+document.addEventListener('change', async (e) => {
+  const input = e.target;
+  if (!input || !input.dataset || !input.dataset.setting) return;
+
+  await setUiPref(input.dataset.setting, input.checked);
+  await applyUiPrefs();
+
+  // 站点条从「关」切回「开」时要补一次渲染 —— 关着的时候根本没画过
+  if (input.dataset.setting === 'showQuickSites') {
+    if (!input.checked) closePinForm();   // 顺手收起展开的表单，免得下次打开还挂着
+    await renderQuickSites();
+  }
+});
+
+// ---- 搜索框：回车提交 ----
+document.addEventListener('submit', (e) => {
+  const form = e.target;
+  if (!form || form.id !== 'searchForm') return;
+
+  // 不拦的话扩展页面会带着查询参数自己导航一次
+  e.preventDefault();
+  const input = document.getElementById('searchInput');
+  runSearch(input ? input.value : '')
+    .catch(err => console.warn('[tab-out] 搜索失败:', err));
 });
 
 

@@ -59,7 +59,9 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 48px;
+  /* 原本是 48px，靠 .quick-sites 自己 -24px 收回来。改成 24px 是因为页头和
+     站点条之间现在还夹着设置面板和搜索框，负边距那套在这个结构下会打架。 */
+  margin-bottom: 24px;
   padding-bottom: 24px;
   border-bottom: 1px solid var(--warm-gray);
 }
@@ -81,11 +83,171 @@ header {
   text-transform: uppercase;
 }
 
+/* ---- 设置入口 —— 页头右上角那颗齿轮 ---- */
+.header-settings {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 8px 15px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 20px;
+  background: var(--card-bg);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.header-settings:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.header-settings.open {
+  color: var(--ink);
+  border-color: var(--accent-sage);
+}
+
+.header-settings svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- 设置面板 ---- */
+.settings-panel {
+  display: none;            /* JS 在 none / block 之间切 */
+  margin: 0 0 26px;
+  padding: 16px 20px 6px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 10px;
+  background: var(--card-bg);
+}
+
+.settings-panel.open { display: block; }
+
+.settings-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.setting-row + .setting-row {
+  border-top: 1px solid var(--warm-gray);
+}
+
+.setting-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.setting-name {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.setting-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* 开关 —— 原生 checkbox 去掉外观，自己画一个胶囊 */
+.setting-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 23px;
+  border-radius: 12px;
+  background: var(--warm-gray);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.setting-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  box-shadow: 0 1px 2px var(--shadow);
+  transition: transform 0.15s;
+}
+
+.setting-switch:checked { background: var(--accent-sage); }
+.setting-switch:checked::after { transform: translateX(17px); }
+.setting-switch:focus-visible { outline: 2px solid var(--accent-sage); outline-offset: 2px; }
+
+/* ---- 搜索框 ---- */
+.search-bar {
+  margin: 0 0 30px;
+}
+
+.search-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 580px;
+  margin: 0 auto;
+  padding: 13px 20px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 28px;
+  background: var(--card-bg);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-form:focus-within {
+  border-color: var(--accent-sage);
+  box-shadow: 0 2px 12px var(--shadow);
+}
+
+.search-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.search-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.search-input::placeholder { color: var(--muted); }
+
 /* ---- 常用站点条 ----
-   header 自带 48px 下边距，这里往上收 24px，免得这一条飘在中间。
-   每个站点 = 34px 圆角图标 + 下面一行小字，跟 Chrome 原生新标签页的快捷方式一个意思。 */
+   每个站点 = 44px 圆角图标 + 下面一行小字，跟 Chrome 原生新标签页的快捷方式一个意思。
+   这里不再往上收负边距：页头和它之间夹着设置面板 / 搜索框，负边距在这个结构下会打架。
+   （页头的下边距已经同步从 48px 改成 24px，视觉间隔和原来一致。） */
 .quick-sites {
-  margin: -24px 0 34px;
+  margin: 0 0 34px;
 }
 
 .quick-sites-list {
