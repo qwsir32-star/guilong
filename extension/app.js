@@ -283,6 +283,85 @@ async function dismissSavedTab(id) {
   }
 }
 
+/**
+ * openAllSavedTabs()
+ *
+ * 一键打开「Saved for later」里所有还没打勾的条目。
+ *
+ * 全部用 active:false 在后台打开，刻意不抢焦点 —— 用户点这个按钮通常是
+ * 在仪表盘上「播种」，希望自己还留在仪表盘上继续整理，而不是被甩到最后一个
+ * 标签页里。返回实际打开的条数，交给调用方决定 toast 文案。
+ */
+async function openAllSavedTabs() {
+  const { active } = await getSavedTabs();
+  if (active.length === 0) return 0;
+
+  for (const item of active) {
+    await chrome.tabs.create({ url: item.url, active: false });
+  }
+  return active.length;
+}
+
+/**
+ * saveAllOpenTabs(options)
+ *
+ * 把当前所有「真实网页」标签页批量存进 Saved for later。
+ *
+ * 去重规则：只跟 active（未打勾）列表比 URL。已归档 / 已删除的 URL 允许重新
+ * 存进来 —— 用户把它划掉或删掉，说明那一轮结束了，再存一次是新一轮的待办。
+ *
+ * @param {{ closeAfter?: boolean }} [options] closeAfter=true 时存完顺手关掉这些标签页。
+ * @returns {Promise<{ added: number, skipped: number, closed: number }>}
+ *          skipped = 因重复而跳过的数量（它已经在待办里，不重复入库）。
+ */
+async function saveAllOpenTabs({ closeAfter = false } = {}) {
+  const { active } = await getSavedTabs();
+  const pending   = new Set(active.map(t => t.url));
+
+  // 只处理真实网页，顺手排除 Tab Out 自己（getRealTabs 已滤掉 chrome-extension://）
+  const candidates = getRealTabs().filter(t => !t.isTabOut && t.url);
+
+  const base  = Date.now();
+  const fresh = [];
+  let   skipped = 0;
+
+  candidates.forEach((t, i) => {
+    if (pending.has(t.url)) { skipped += 1; return; }
+    pending.add(t.url);
+    fresh.push({
+      // 用 `${base}-${i}` 而不是 Date.now()：批量写入时毫秒级时间戳会撞车，
+      // 撞了就变成同一个 id，之后打勾/删除会误伤到别人。
+      id:        `${base}-${i}`,
+      url:       t.url,
+      title:     t.title || t.url,
+      savedAt:   new Date().toISOString(),
+      completed: false,
+      dismissed: false,
+    });
+  });
+
+  if (fresh.length > 0) {
+    const { deferred = [] } = await chrome.storage.local.get('deferred');
+    deferred.push(...fresh);
+    await chrome.storage.local.set({ deferred });
+  }
+
+  let closed = 0;
+
+  // 「存入并关闭」关的是**全部候选标签页**，不只是这次新存的那几条。
+  // 因为被 skip 的候选只有一个原因：它的 URL 早就在待办里了 —— 关掉不丢任何东西，
+  // 而用户点这个按钮的心理预期就是「标签栏清干净」，留几个重复的在会很困惑。
+  //
+  // 关闭走精确 URL 匹配（closeTabsExact），不能用 closeTabsByUrls ——
+  // 后者按 hostname 关，会顺手干掉同站其他没被列为候选的页面。
+  if (closeAfter && candidates.length > 0) {
+    closed = candidates.length;
+    await closeTabsExact(candidates.map(t => t.url));
+  }
+
+  return { added: fresh.length, skipped, closed };
+}
+
 
 /* ----------------------------------------------------------------
    UI HELPERS
@@ -772,6 +851,8 @@ const ICONS = {
   close:   `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>`,
   archive: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5m6 4.125l2.25 2.25m0 0l2.25 2.25M12 13.875l2.25-2.25M12 13.875l-2.25 2.25M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" /></svg>`,
   focus:   `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 19.5 15-15m0 0H8.25m11.25 0v11.25" /></svg>`,
+  // 「存入待办」—— 收件箱箭头朝下，比 focus 那个朝右上角的箭头贴题
+  save:    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3.75H6.912a2.25 2.25 0 0 0-2.15 1.588L2.35 13.177a2.25 2.25 0 0 0-.1.661V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 0 0-2.15-1.588H15M2.25 13.5h3.86a2.25 2.25 0 0 1 2.012 1.244l.256.512a2.25 2.25 0 0 0 2.013 1.244h3.218a2.25 2.25 0 0 0 2.013-1.244l.256-.512a2.25 2.25 0 0 1 2.013-1.244h3.859M12 3v8.25m0 0-3-3m3 3 3-3" /></svg>`,
 };
 
 
@@ -988,6 +1069,7 @@ async function renderDeferredColumn() {
   const archiveEl      = document.getElementById('deferredArchive');
   const archiveCountEl = document.getElementById('archiveCount');
   const archiveList    = document.getElementById('archiveList');
+  const actionsEl      = document.getElementById('deferredActions');
 
   if (!column) return;
 
@@ -1012,6 +1094,20 @@ async function renderDeferredColumn() {
       list.style.display = 'none';
       countEl.textContent = '';
       empty.style.display = 'block';
+    }
+
+    // 批量操作按钮 —— 只在有未打勾条目时出现
+    if (actionsEl) {
+      if (active.length > 0) {
+        actionsEl.innerHTML = `
+          <button class="action-btn save-tabs" data-action="open-all-saved">
+            ${ICONS.tabs} 全部打开 ${active.length} 个
+          </button>`;
+        actionsEl.style.display = 'flex';
+      } else {
+        actionsEl.innerHTML = '';
+        actionsEl.style.display = 'none';
+      }
     }
 
     // Render archive section
@@ -1233,10 +1329,27 @@ async function renderStaticDashboard() {
   const openTabsMissionsEl   = document.getElementById('openTabsMissions');
   const openTabsSectionCount = document.getElementById('openTabsSectionCount');
   const openTabsSectionTitle = document.getElementById('openTabsSectionTitle');
+  const openTabsActionsEl    = document.getElementById('openTabsActions');
 
   if (domainGroups.length > 0 && openTabsSection) {
     if (openTabsSectionTitle) openTabsSectionTitle.textContent = 'Open tabs';
-    openTabsSectionCount.innerHTML = `${domainGroups.length} domain${domainGroups.length !== 1 ? 's' : ''} &nbsp;&middot;&nbsp; <button class="action-btn close-tabs" data-action="close-all-open-tabs" style="font-size:11px;padding:3px 10px;">${ICONS.close} Close all ${realTabs.length} tabs</button>`;
+    openTabsSectionCount.textContent = `${domainGroups.length} domain${domainGroups.length !== 1 ? 's' : ''}`;
+
+    // 批量操作按钮。原先「Close all」是塞在 count 那一行里的，现在三种批量动作
+    // 一起挪到独立的一行，否则 nowrap 的 count 行在窄窗口下会挤爆。
+    if (openTabsActionsEl) {
+      openTabsActionsEl.innerHTML = `
+        <button class="action-btn save-tabs" data-action="save-all-open-tabs" data-close-after="0">
+          ${ICONS.save} 全部存入
+        </button>
+        <button class="action-btn save-tabs" data-action="save-all-open-tabs" data-close-after="1">
+          ${ICONS.save} 存入并关闭
+        </button>
+        <button class="action-btn close-tabs" data-action="close-all-open-tabs">
+          ${ICONS.close} 关闭全部 ${realTabs.length} 个
+        </button>`;
+      openTabsActionsEl.style.display = 'flex';
+    }
     openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
     openTabsSection.style.display = 'block';
   } else if (openTabsSection) {
@@ -1444,6 +1557,45 @@ document.addEventListener('click', async (e) => {
       }, 300);
     }
     showToast('已从归档删除');
+    return;
+  }
+
+  // ---- 批量：一键打开 saved for later 里所有未打勾的条目 ----
+  if (action === 'open-all-saved') {
+    const opened = await openAllSavedTabs();
+    showToast(opened === 0 ? '没有可打开的条目' : `已在后台打开 ${opened} 个标签页`);
+    return;
+  }
+
+  // ---- 批量：把当前所有标签页存进 saved for later（data-close-after=1 时存完就关）----
+  if (action === 'save-all-open-tabs') {
+    const closeAfter = actionEl.dataset.closeAfter === '1';
+
+    let result;
+    try {
+      result = await saveAllOpenTabs({ closeAfter });
+    } catch (err) {
+      console.error('[tab-out] 批量存入失败:', err);
+      showToast('批量存入失败');
+      return;
+    }
+
+    if (result.added === 0 && result.closed === 0) {
+      showToast(result.skipped > 0 ? '这些标签页都已经在待办里了' : '没有可存入的标签页');
+      return;
+    }
+
+    // 存完就关 → 卡片也得跟着消失，整页重画；只存不关 → 只需要刷新右侧清单
+    if (closeAfter) await renderStaticDashboard();
+    else            await renderDeferredColumn();
+
+    if (closeAfter) {
+      showToast(`已存入 ${result.added} 个、关闭 ${result.closed} 个标签页`);
+    } else {
+      showToast(
+        `已存入 ${result.added} 个标签页` + (result.skipped ? `，跳过 ${result.skipped} 个重复` : '')
+      );
+    }
     return;
   }
 

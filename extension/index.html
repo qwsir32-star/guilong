@@ -61,6 +61,8 @@
         <div class="section-line"></div>
         <div class="section-count" id="openTabsSectionCount"></div>
       </div>
+      <!-- 批量操作：全部存入 Saved for later / 存入并关闭 / 关闭全部 — 由 JS 填充 -->
+      <div class="section-actions" id="openTabsActions" style="display:none"></div>
       <div class="missions" id="openTabsMissions"></div>
     </div>
 
@@ -71,6 +73,9 @@
         <div class="section-line"></div>
         <div class="section-count" id="deferredCount"></div>
       </div>
+
+      <!-- 批量操作：一键打开全部未打勾的条目 — 由 renderDeferredColumn() 填充 -->
+      <div class="deferred-actions" id="deferredActions" style="display:none"></div>
 
       <!-- Active checklist items — injected by renderDeferredList() in app.js -->
       <div class="deferred-list" id="deferredList"></div>

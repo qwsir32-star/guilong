@@ -555,6 +555,24 @@ header {
   border-color: var(--accent-sage);
 }
 
+/* ---- 批量操作按钮行 ----
+   Open tabs 区（#openTabsActions）和 Saved for later 区（#deferredActions）各有一条。
+   section-header 自带 20px 下边距，这里往上收 8px，免得按钮和标题之间空一大块。 */
+.section-actions,
+.deferred-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 16px;
+}
+
+.section-actions .action-btn,
+.deferred-actions .action-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
 .action-btn.danger {
   color: var(--status-abandoned);
 }
