@@ -16,7 +16,7 @@
 
 ```bash
 git clone https://github.com/qwsir32-star/guilong.git
-cd tab-out
+cd guilong
 ```
 
 **2. 加载扩展**
@@ -111,10 +111,24 @@ const LOCAL_CUSTOM_GROUPS = [
 
 ---
 
+## 测试
+
+仓库里带了一份冒烟测试 —— 没有依赖、不联网、一秒内跑完：
+
+```bash
+node tests/smoke.js
+```
+
+它做两件事：用最小 stub 把 `app.js` 装进 Node 的 `vm` 里，直接调用内部纯函数验证行为（子域归并、去重、入口 URL 归一化、TLD 剥离、占位图识别、设置项默认值……）；再对源码做静态扫描，守住几条约定 —— 界面文案必须走 `strings.js`、页头版式的不变量、旧品牌名不许回流。
+
+**它不点界面**，也不验证真实 Chrome API 的行为，所以它不能替代你手动加载扩展看一眼。它守的是「逻辑 + 源码约束」，不是端到端。
+
+---
+
 ## 目录结构
 
 ```
-tab-out/
+guilong/
 ├── extension/            <- 加载这个文件夹
 │   ├── manifest.json
 │   ├── index.html        新标签页结构
@@ -123,6 +137,8 @@ tab-out/
 │   ├── app.js            仪表盘主逻辑
 │   ├── background.js     快捷键与后台
 │   └── icons/
+├── tests/
+│   └── smoke.js          冒烟测试（node tests/smoke.js）
 ├── AGENTS.md             给编码 agent 的安装引导手册
 ├── LICENSE               MIT（含原始署名）
 └── README.md

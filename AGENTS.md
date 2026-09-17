@@ -27,7 +27,7 @@
 
 ```bash
 git clone https://github.com/qwsir32-star/guilong.git
-cd tab-out
+cd guilong
 ```
 
 ---
@@ -102,6 +102,9 @@ open "chrome://extensions"
 - 100% 本地，不向任何外部服务发送数据。
 - 想个性化（扩展「主页」的判定范围、自定义合并分组）就建 `extension/config.local.js`，这个文件已被 `.gitignore` 忽略。**其中规则的优先级高于内置规则**，可以覆盖内置的合并逻辑。
 - 界面文案全部集中在 `extension/strings.js`，默认中文。改文案只改这一张表，不要在 `app.js` 里硬编码字符串。
-- 更新：`cd tab-out && git pull`，然后在 `chrome://extensions` 里点扩展卡片上的刷新按钮。
+- **改完代码跑一遍 `node tests/smoke.js`**（约 186 处断言，零依赖、不联网、一秒内跑完）：
+  它既验证内部纯函数的行为，也扫描源码守住「文案必须走 `strings.js`」「页头版式不变量」
+  「旧品牌名不许回流」这几条约定。它不点界面，所以**不能替代手动加载扩展看一眼**。
+- 更新：`cd guilong && git pull`，然后在 `chrome://extensions` 里点扩展卡片上的刷新按钮。
   **改完记得关掉旧的新标签页重新开**——新标签页有缓存，只点刷新按钮不一定生效。
 - 本项目是 [Tab Out](https://github.com/zarazhangrui/tab-out) 的衍生版（MIT），原始署名与许可证原文见 `LICENSE`。
