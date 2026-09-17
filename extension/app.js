@@ -2618,8 +2618,9 @@ document.addEventListener('keydown', (e) => {
     const btn = document.querySelector('.quick-site-form [data-action="pin-site"]');
     if (btn) btn.click();
   } else if (e.key === 'Escape') {
-    const form = document.getElementById('quickSiteForm');
-    if (form) form.style.display = 'none';
+    // 走 closePinForm 而不是只隐藏：它还会清空字段和 form.dataset.editingUrl，
+    // 否则「编辑到一半按 Esc」会把陈旧的编辑目标留到下一次打开表单
+    closePinForm();
   }
 });
 
