@@ -397,6 +397,55 @@ function siteKey(url) {
 }
 
 /**
+ * originOf(url) — 站点入口地址（协议 + 主机 + /），取不到返回空串
+ *
+ * 自动部分（topSites）要把深链削成入口：历史热度里很可能躺着
+ * `github.com/someone/some-repo` 这种具体页面，但这一行图标底下写的是
+ * 「GitHub」，点下去却进到某个仓库，就跟标签对不上了。
+ * 手动钉住的不削 —— 用户明确给的深链要尊重。
+ */
+function originOf(url) {
+  try {
+    const u = new URL(url);
+    if (!/^https?:$/i.test(u.protocol)) return '';
+    return u.origin + '/';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * sameEntryUrl(a, b) — 两个 URL 是不是「同一个入口」
+ *
+ * 比精确相等松一点：忽略 www. 的有无、忽略协议、忽略末尾斜杠、忽略 hash 和
+ * utm_* 追踪参数。但**绝不忽略路径**：主页就是主页，视频页就是视频页。
+ *
+ * 这条规则是踩出来的：早先站点条按 hostname 找已开标签页，结果点「B站」
+ * 会切到你正开着的某个 B 站视频页，而不是主页；点「GitHub」会切到某个仓库页。
+ * 按 hostname 匹配是给「关闭该站全部标签页」那种批量语义用的，不是给
+ * 「去这个网站的入口」用的。
+ */
+function sameEntryUrl(a, b) {
+  const norm = u => {
+    try {
+      const x = new URL(u);
+      for (const k of [...x.searchParams.keys()]) {
+        if (/^utm_/i.test(k)) x.searchParams.delete(k);
+      }
+      return (
+        x.hostname.replace(/^www\./, '').toLowerCase() +
+        x.pathname.replace(/\/+$/, '') +
+        (x.search || '')
+      );
+    } catch {
+      return '';
+    }
+  };
+  const na = norm(a);
+  return Boolean(na) && na === norm(b);
+}
+
+/**
  * normalizeSiteUrl(raw) — 把用户随手输的东西凑成一个能用的 URL
  *
  * 「github.com」→「https://github.com/」
@@ -588,8 +637,11 @@ async function getQuickSites() {
   for (const item of top) {
     if (autoAdded >= MAX_AUTO_SITES) break;
 
-    const url = item && item.url;
-    if (!url || !/^https?:/i.test(url)) continue;   // 跳过 chrome:// 之类
+    // topSites 给的可能是深链（github.com/someone/repo、某个视频页）。
+    // 这一行图标底下写的是站点名，所以削成入口，让「标签」和「点下去到哪」
+    // 对得上。用户想要深链的话自己钉一个就是了，钉住的不会被削。
+    const url = originOf(item && item.url);
+    if (!url) continue;
 
     const key = siteKey(url);
     if (!key || seen.has(key) || hiddenKeys.includes(key)) continue;
@@ -1475,7 +1527,7 @@ function renderQuickSite(site) {
     <div class="quick-site" data-site-key="${escapeAttr(siteKey(site.url))}">
       <button class="quick-site-open" data-action="open-quick-site"
               data-site-url="${escapeAttr(site.url)}"
-              title="${safeLabel} · ${safeHost}">
+              title="${safeLabel} · 打开 ${escapeAttr(site.url)}">
         <span class="quick-site-icon">
           <span class="quick-site-letter">${escapeAttr(initial)}</span>
           <img src="${escapeAttr(favicon)}" data-favicon data-host="${safeHost}" alt="">
@@ -1494,18 +1546,19 @@ function renderQuickSite(site) {
 /**
  * openOrFocusSite(url)
  *
- * 站点条点击的语义是「到那个站去」：该站已经有开着的标签页就切过去，
- * 没有才新开一个。所以按 hostname 找，不是按精确 URL ——
- * 点「B站」时用户在意的不是首页那个 URL，是「我要用到 B 站」。
+ * 站点条点击的语义是「到那个网站的入口去」。
+ * 所以只认「同一个入口」的标签页（同 hostname 且同路径，见 sameEntryUrl）：
+ *   - 这个入口已经开着 → 切过去，不重复开
+ *   - 只开着这个站的其他页面（比如某个视频页、某个仓库页）→ 不算，新开入口
+ *
+ * 这里**不能**按 hostname 找。按 hostname 找是「关闭该站全部标签页」那类
+ * 批量操作的语义，用在「去入口」上会把人已经打开的正文页当成入口切过去。
  */
 async function openOrFocusSite(url) {
   if (!url) return 'none';
 
-  const key     = siteKey(url);
   const allTabs = await chrome.tabs.query({});
-  // key 为空说明这个 URL 解析不出 hostname。此时按 hostname 找会把 file:// 之类的
-  // 标签页误当成同一个站（它们的 hostname 也是空），所以只能直接新开。
-  const match   = key ? allTabs.find(t => t.url && siteKey(t.url) === key) : null;
+  const match   = allTabs.find(t => t.url && sameEntryUrl(t.url, url));
 
   if (match) {
     await chrome.tabs.update(match.id, { active: true });
