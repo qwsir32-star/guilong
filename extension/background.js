@@ -1,7 +1,7 @@
 /**
  * background.js — Service Worker for Badge Updates
  *
- * Chrome's "always-on" background script for Tab Out.
+ * Chrome's "always-on" background script for 归拢.
  * Its only job: keep the toolbar badge showing the current open tab count.
  *
  * Since we no longer have a server, we query chrome.tabs directly.
@@ -65,7 +65,7 @@ async function updateBadge() {
 /**
  * focusOrOpenDashboard()
  *
- * 快捷键触发时调用。已经开着 Tab Out 就切过去（跨窗口也行），
+ * 快捷键触发时调用。已经开着归拢就切过去（跨窗口也行），
  * 没开就新建一个。
  *
  * 为什么不用 ⌘+1：那是 Chrome 的保留快捷键，扩展既注册不了也覆盖不了。

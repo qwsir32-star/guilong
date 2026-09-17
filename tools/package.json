@@ -1,0 +1,11 @@
+{
+  "name": "guilong-icon-tools",
+  "private": true,
+  "description": "只在重出图标时用得上。归拢扩展本身是零构建的，跑扩展不需要这里任何东西。",
+  "scripts": {
+    "icons": "node make-icons.js"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

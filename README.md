@@ -152,14 +152,34 @@ guilong/
 │   ├── style.css
 │   ├── strings.js        全部界面文案（中 / 英）
 │   ├── app.js            仪表盘主逻辑
-│   ├── background.js     快捷键与后台
-│   └── icons/
+│   ├── background.js     后台：工具栏角标计数、快捷键
+│   └── icons/            icon.svg 是母版，四张 PNG 都由它导出
 ├── tests/
 │   └── smoke.js          冒烟测试（node tests/smoke.js）
+├── tools/
+│   └── make-icons.js     由 icon.svg 重出各尺寸 PNG（改图标时才用）
 ├── AGENTS.md             给编码 agent 的安装引导手册
 ├── LICENSE               MIT（含原始署名）
 └── README.md
 ```
+
+### 想换图标
+
+图标母版是 `extension/icons/icon.svg`，`icon16 / 32 / 48 / 128.png` 全部由它导出 ——
+**改图标只改这一个文件**，然后重跑一次导出脚本：
+
+```bash
+cd tools && npm i && cd ..    # 只装这一次；依赖关在 tools/ 里，仓库根目录不会被 package.json 污染
+node tools/make-icons.js
+```
+
+脚本会顺手核验每张 PNG 的实际尺寸和文件名是否对得上，对不上就报错退出。
+这一步只在改图标时才需要 —— **平时加载扩展不需要任何构建**。
+
+⚠️ 有一条约束值得知道：**16px 是这个图标真正的战场，不是 128px。**
+细线条和窄缝在那个尺寸下会整片消失（五根细签会糊成一条实心条），
+所以图形必须画得够粗、缝留得够宽。改完一定要看 16px 那张。冒烟测试里有一条守卫
+会检查 `manifest.json` 声明的每个图标文件都存在、且实际像素尺寸和声明一致。
 
 ---
 

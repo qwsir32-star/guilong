@@ -20,7 +20,7 @@
  *   PART 7  设置开关 uiPrefs 读写 / 搜索框 looksLikeUrl / chrome.search 兜底
  *   PART 8  页头三栏版式回归守卫（孩子必须显式 grid-column）
  *   PART 9  文案表（中英对应 / T 与 Tn / data-i18n 落 DOM / 不许绕开表写死文案 /
- *           旧品牌名不许回流 / manifest 用新名字 / LICENSE 保留原始署名）
+ *           旧品牌名不许回流 / manifest 用新名字与图标 / LICENSE 保留原始署名）
  */
 const fs = require('fs');
 const path = require('path');
@@ -289,7 +289,7 @@ async function part2() {
     { id: 5, url: 'https://d.com/4',  title: 'D 曾删除', windowId: 0 },
     { id: 6, url: 'https://e.com/5',  title: 'E 已归档', windowId: 0 },
     { id: 7, url: 'chrome://newtab/', title: '新标签页', windowId: 0 },
-    { id: 8, url: TO_URL,             title: 'Tab Out',  windowId: 0 },
+    { id: 8, url: TO_URL,             title: '归拢',     windowId: 0 },
   ];
   await T.fetchOpenTabs();
 
@@ -313,7 +313,7 @@ async function part2() {
   check('重复调用 added', r2.added, 0);
 
   // 存完就关：候选标签页全部关掉（含因重复被 skip 的那条），
-  // 但 chrome://newtab/ 和 Tab Out 自己不能动。
+  // 但 chrome://newtab/ 和归拢自己不能动。
   fakeTabs.push({ id: 20, url: 'https://b.com/other-page', title: 'B 站的另一页', windowId: 0 });
   store.deferred = [];   // 清空待办，好让这次全部都能新存
   await T.fetchOpenTabs();
@@ -464,7 +464,7 @@ async function part3() {
   store.pinnedSites = [];
   store.hiddenTopSites = [];
   topSites = [
-    { url: 'https://github.com/qwsir32-star/tab-out', title: 'qwsir32-star/tab-out' },
+    { url: 'https://github.com/qwsir32-star/guilong', title: 'qwsir32-star/guilong' },
     { url: 'https://www.bilibili.com/video/BV1',      title: '某个视频' },
     { url: 'chrome://bookmarks/',                     title: '书签' },
   ];
@@ -671,7 +671,7 @@ async function part6() {
   imgPixels.set('github.com', [1, 2, 3, 255, 4, 5, 6, 255]);
 
   // 基准指纹是运行时拿一个必然不存在的域名现求的，不能硬编码某张图的哈希
-  const defSig = await T.faviconSignature('https://tab-out-no-such-site.invalid/');
+  const defSig = await T.faviconSignature('https://guilong-no-such-site.invalid/');
   check('取得默认占位图的基准指纹', typeof defSig === 'string' && defSig.length > 0, true);
 
   const realSig = await T.faviconSignature('https://github.com/');
@@ -953,7 +953,7 @@ function part9() {
      所以 /Tab Out/ 这个模式扫不到它们，正好。 */
   const MANIFEST = JSON.parse(srcOf('manifest.json'));
   const brandLeak = [];
-  for (const f of ['app.js', 'index.html', 'strings.js', 'manifest.json']) {
+  for (const f of ['app.js', 'background.js', 'index.html', 'strings.js', 'manifest.json']) {
     srcOf(f).split('\n').forEach((line, i) => {
       if (/zarazhangrui/.test(line)) return;   // 上游署名与上游链接里的旧名是合法的
       if (/Tab Out/.test(line)) brandLeak.push(`${f} L${i + 1}`);
@@ -967,6 +967,23 @@ function part9() {
   // 删掉 key 不会有任何报错，只会静默丢数据，所以必须守住。
   check('manifest 有固定 key（扩展 ID 不随目录名变）',
     /^MII[A-Za-z0-9+/]{300,}={0,2}$/.test(MANIFEST.key || ''), true);
+  /* 图标守卫：manifest 里声明的每个图标文件都得真的存在，而且 PNG 的实际尺寸
+     要和声明的尺寸一致。缺文件或尺寸写错，Chrome 只会静默换回默认图标 /
+     模糊放大，一个错都不报 —— 这种只能靠断言守。 */
+  const declaredIcons = Object.assign({}, MANIFEST.icons, MANIFEST.action.default_icon);
+  const iconProblems = [];
+  for (const size of Object.keys(declaredIcons)) {
+    const rel = declaredIcons[size];
+    const p = path.join(EXT, rel);
+    if (!fs.existsSync(p)) { iconProblems.push(rel + ' 文件不存在'); continue; }
+    const buf = fs.readFileSync(p);
+    if (buf.slice(1, 4).toString('latin1') !== 'PNG') { iconProblems.push(rel + ' 不是 PNG'); continue; }
+    const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
+    if (w !== Number(size) || h !== Number(size)) {
+      iconProblems.push(rel + ' 实际 ' + w + 'x' + h + '，声明是 ' + size);
+    }
+  }
+  check('manifest 声明的图标文件都在、且尺寸对得上', iconProblems, []);
   check('LICENSE 保留了原始署名',
     /Copyright \(c\) 2026 Zara Zhang/.test(fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8')), true);
 }

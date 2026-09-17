@@ -1,14 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- Rounded rectangle background in amber -->
-  <rect x="4" y="4" width="120" height="120" rx="24" ry="24" fill="#c8713a"/>
-  <!-- White "M" letter centered -->
-  <text
-    x="64"
-    y="90"
-    font-family="Georgia, serif"
-    font-size="80"
-    font-weight="bold"
-    fill="white"
-    text-anchor="middle"
-  >M</text>
+  <!-- 归拢 · 图标母版 ——「一束被箍住的签」
+       配色：底 #7A2E2F / 签 #F3E7D8 / 箍 #E3BE79
+       icon16/32/48/128.png 全部由这张母版导出，改图标只改这里。
+
+       为什么是三根而不是五根：五根细签（每根 10px 宽、缝 2px）缩到 16px 后
+       只剩 1.25px 宽、0.25px 缝，四道内缝会全部消失、糊成一条 8px 的实心条。
+       三根加粗（18px 宽、缝 12px）在 16px 下仍是三段，缝还在。
+       另外箍不能把签的下端盖死 —— 下面露出签头才读得出「被勒住的一捆」。 -->
+  <rect width="128" height="128" rx="28" fill="#7A2E2F"/>
+  <g fill="#F3E7D8">
+    <rect x="25" y="26" width="18" height="88" rx="9"/>
+    <rect x="55" y="14" width="18" height="100" rx="9"/>
+    <rect x="85" y="34" width="18" height="80" rx="9"/>
+  </g>
+  <rect x="19" y="76" width="90" height="24" rx="12" fill="#E3BE79"/>
 </svg>
