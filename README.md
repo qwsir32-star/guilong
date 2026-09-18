@@ -88,9 +88,13 @@ git clone https://github.com/qwsir32-star/guilong.git
 要打商店包或者跑测试：
 
 ```bash
-node tools/build-store.js   # 出 dist/ 下三个商店包
-node tests/smoke.js         # 冒烟测试，零依赖，跑完 0.2 秒
+node tools/build-store.js          # 出 dist/ 下三个商店包
+node tests/smoke.js                # 冒烟测试 + 静态守卫，零依赖，跑完 0.2 秒
+node tests/mutations/run-all.js    # 变异测试：证明每条守卫坏掉时真的会变红
 ```
+
+> 「全新安装」和「图标有没有偷偷联网」另有两个脚本，要真机跑，见
+> [工程笔记](docs/工程笔记.md#另外三件必须真跑平时不跑)。
 
 ## 浏览器支持
 
