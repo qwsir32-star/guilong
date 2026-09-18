@@ -27,6 +27,7 @@
  *   PART 13 稍后再看 / 归档（一键删除 / 归档还原 / 确认态 / 文案）
  *   PART 14 跨浏览器（env.js 判定 / Firefox 差异 / README 的加载路径）
  *   PART 15 字体自托管（Mac / Windows 一致 + 零网络请求）
+ *   PART 16 README 结构（目录锚点不许死链 / 仓库内链接真实存在 / 许可证压轴）
  */
 const fs = require('fs');
 const path = require('path');
@@ -2242,6 +2243,46 @@ function part15() {
     ['Hiragino Sans GB', 'Microsoft YaHei', 'Microsoft YaHei UI', 'PingFang SC']);
 }
 
+/* ==================================================================
+   PART 16 — README 的结构不变量
+
+   README 是一张漏斗：路人十秒、试用者五分钟、深度用户长期。这一组
+   只守「改 README 时最容易静默坏掉、而且本地看不出来」的三件事：
+
+     ① 目录锚点。改一次标题文字，锚点就成了死链 —— markdown 渲染器
+        不会报错，GitHub 上点了没反应，只有点的人知道。
+     ② 仓库内的链接。文档改名或搬目录，链接 404，同样不报错。
+     ③ 许可证压轴。这是 README 规范里唯一强制位置的一条。
+
+   边界：只扫 README 本身，不碰 docs/ 的措辞 —— 那边的文字是给人读的，
+   守卫管不了，也不该管。
+   ================================================================== */
+function part16() {
+  console.log('\n[PART 16] README 结构（目录锚点 / 无死链 / 许可证压轴）');
+
+  const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+
+  // ---- ① 目录里的每个锚点，正文里都要有一篇同名标题 ----
+  const headings = [...README.matchAll(/^##\s+(.+?)\s*$/gm)].map(m => m[1]);
+  const toc = [...README.matchAll(/^\s*-\s*\[([^\]]+)\]\(#([^)]+)\)\s*$/gm)];
+  check('README 有目录', toc.length >= 5, true);
+  check('  目录里每个锚点都对得上一篇真实标题',
+    toc.filter(([, text]) => headings.indexOf(text) === -1).map(([, text]) => text), []);
+  check('  目录里不列「目录」自己',
+    toc.some(([, text]) => text === '目录'), false);
+
+  // ---- ② 指向仓库内文件的链接不许是死的 ----
+  const local = [...README.matchAll(/\]\((?!https?:|#)([^)]+)\)/g)]
+    .map(m => m[1].split('#')[0])
+    .filter(p => p.length > 0);
+  check('README 里指向仓库内的链接都真的存在',
+    [...new Set(local)].filter(p => !fs.existsSync(path.join(ROOT, p))), []);
+
+  // ---- ③ 许可证压轴 ----
+  check('最后一个小节是许可证（规范里唯一强制位置的一条）',
+    headings[headings.length - 1], '许可证');
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -2259,6 +2300,7 @@ function part15() {
   await part13();
   await part14();
   part15();
+  part16();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);
