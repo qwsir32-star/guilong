@@ -2140,23 +2140,25 @@ async function part14() {
      Firefox 不认 background.service_worker（它跑 background.scripts），塞给它
      后台根本不启动 —— 页面看着正常，但角标不动、快捷键无效。这是最难查的那种
      半残：没有任何报错，只是少了一半功能。这条守的是文档指错文件。 */
-  /* 只扫「2. Firefox：」那一行。整篇 README 里还有一句「不要选
-     extension/manifest.json」的警告 —— 按全文扫会把自己点着（踩过一次）。 */
+  /* ---- Firefox 那个「选错 manifest」的坑，必须写在指南里 ----
+     README 是给用户看的门面，不放「从源码加载」那套细节（那些对用户是纯负担）。
+     但坑本身不能丢：Firefox 不认 background.service_worker（它跑 background.scripts），
+     把 Chromium 那份 manifest 塞给它，后台根本不启动 —— 页面看着正常，角标不动、
+     快捷键无效，**没有任何报错**，最难查的那种半残。所以守卫从 README 挪到指南。 */
   const README_SRC = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
-  const fxStep = README_SRC.split('\n').find(l => l.indexOf('2. Firefox：') === 0) || '';
-  check('README 有 Firefox 那一步', fxStep.length > 0, true);
-  check('  Firefox 步骤指向 dist/firefox/manifest.json',
-    fxStep.includes('dist/firefox/manifest.json'), true);
-  check('  Firefox 步骤不许指向 extension/manifest.json（那份没有后台）',
-    fxStep.includes('extension/manifest.json'), false);
-  check('  Firefox 步骤要求先打包（产物才带 gecko 那份 manifest）',
-    fxStep.includes('build-store.js'), true);
-  check('README 里警告了别选 Chromium 那份',
-    README_SRC.includes('不要选'), true);
+  const GUIDE_PATH = path.join(ROOT, 'docs', 'firefox-安装指南.md');
+  const GUIDE_SRC  = fs.existsSync(GUIDE_PATH) ? fs.readFileSync(GUIDE_PATH, 'utf8') : '';
+  check('Firefox 安装指南在', GUIDE_SRC.length > 0, true);
+  check('  指南要求先打包（产物才带 gecko 那份 manifest）',
+    GUIDE_SRC.includes('build-store.js'), true);
+  check('  指南指向 dist/firefox/manifest.json',
+    GUIDE_SRC.includes('dist/firefox/manifest.json'), true);
+  check('  指南明确说了不要选 extension/manifest.json',
+    GUIDE_SRC.includes('不要选 `extension/manifest.json`'), true);
+  check('  指南解释了为什么（Firefox 不认 service_worker）',
+    GUIDE_SRC.includes('background.service_worker'), true);
   check('README 链接到了 Firefox 安装指南',
     README_SRC.includes('docs/firefox-安装指南.md'), true);
-  check('docs/firefox-安装指南.md 存在',
-    fs.existsSync(path.join(ROOT, 'docs', 'firefox-安装指南.md')), true);
 }
 
 /* ==================================================================
