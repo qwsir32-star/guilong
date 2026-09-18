@@ -1675,8 +1675,11 @@ async function part12() {
   const blocks = [...CSS_SRC.matchAll(/html\[data-theme="([a-z]+)"\]\s*\{([\s\S]*?)\}/g)]
     .map(m => ({ id: m[1], body: m[2].replace(/\/\*[\s\S]*?\*\//g, '') }));
 
-  check('CSS 里有五个主题块（system 不在 CSS 里，它是被解析掉的）',
-    blocks.map(b => b.id).sort(), ['dark', 'forest', 'ink', 'light', 'paper']);
+  // 别把主题 id 的清单写死在这儿：每加一个主题都要跟着改一遍，不改就红，
+  // 而它和下面那条「跟 THEME_IDS 比对」说的是同一件事。这里只数数量。
+  check('CSS 里的主题块数量和 app.js 的清单一样多', blocks.length, T.THEME_IDS.length);
+  check('CSS 里没有 system 这一套（它是被解析掉的，不是一种配色）',
+    CSS_SRC.includes('html[data-theme="system"]'), false);
   check('app.js 的主题清单和 CSS 里的主题块对得上',
     blocks.map(b => b.id).sort(), [...T.THEME_IDS].sort());
 
@@ -1695,6 +1698,48 @@ async function part12() {
   // 而且不报错，只能靠眼睛在真机上一个主题一个主题地看。
   check('主题块里没有写死的 rgba / 十六进制色',
     blocks.filter(b => /rgba\(|#[0-9a-fA-F]{3,8}\b/.test(b.body)).map(b => b.id), []);
+
+  /* ---- 对比度 ----
+     加新主题最容易出的毛病是「看着好看、字看不清」。这个不用眼睛判断 ——
+     WCAG 的相对亮度公式算一下就行，而靠眼睛在真机上七个主题挨个看，
+     基本一定会漏。 */
+  const srgb = v => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  const lum  = ([r, g, b]) => 0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(b);
+  const contrast = (a, b) => {
+    const l1 = lum(a), l2 = lum(b);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  };
+
+  const triplets = {};
+  for (const b of blocks) {
+    const t = {};
+    for (const m of b.body.matchAll(/--rgb-([a-z-]+):\s*(\d+)\s+(\d+)\s+(\d+)\s*;/g)) {
+      t[m[1]] = [Number(m[2]), Number(m[3]), Number(m[4])];
+    }
+    triplets[b.id] = t;
+  }
+
+  check('每个主题都解析出了全部三元组',
+    blocks.filter(b => Object.keys(triplets[b.id]).length !== rootCount).map(b => b.id), []);
+
+  check('每个主题的正文在纸面上都够清楚（≥4.5）',
+    blocks.filter(b => contrast(triplets[b.id].ink, triplets[b.id].paper) < 4.5).map(b => b.id), []);
+
+  check('实心按钮上的字在主色上都够清楚（≥4.5）',
+    blocks.flatMap(b => {
+      const t = triplets[b.id];
+      return [
+        contrast(t['on-accent'], t['accent-sage']) < 4.5 ? `${b.id}/主色` : null,
+        contrast(t['on-accent'], t['accent-sage-strong']) < 4.5 ? `${b.id}/主色-hover` : null,
+      ].filter(Boolean);
+    }), []);
+
+  // ⚠️ 这条不是达标线，是**地板**：所有浅色主题的次要字（--muted）都只有 3 左右，
+  // 低于 WCAG AA 的 4.5 —— 那是这套配色从一开始就有的样子（深色主题才有 5.5+），
+  // 不是某一次改坏的。加新主题时不许比现在更低；真要提，就把七个主题的
+  // --muted 一起压深，别只动一个。
+  check('次要字没比现有主题更差（地板 2.8，不是达标线）',
+    blocks.filter(b => contrast(triplets[b.id].muted, triplets[b.id].paper) < 2.8).map(b => b.id), []);
 
   /* ---- 静态：预加载 ---- */
   check('theme-boot.js 在 <head> 里',

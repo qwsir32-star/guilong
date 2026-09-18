@@ -25,7 +25,7 @@
   // 必须和 app.js 的 THEME_IDS 一一对应 —— 冒烟测试里有断言盯着这两份清单。
   // 少一个的话，那个主题在预加载阶段会被当成不认识的值退回默认，
   // 表现是「选中了深色，开新标签页还是先白一下，然后才变深」。
-  var THEME_IDS = ['paper', 'light', 'dark', 'forest', 'ink'];
+  var THEME_IDS = ['paper', 'light', 'mint', 'sky', 'dark', 'forest', 'ink'];
   var DARK_IDS  = ['dark', 'forest', 'ink'];
   var MIRROR_KEY = 'guilong.theme';
   var FALLBACK   = 'paper';

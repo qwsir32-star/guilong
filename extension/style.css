@@ -1971,8 +1971,11 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
    换肤时会有一块颜色不跟着变（而且不报错，只能靠眼睛发现）。
 
    data-theme 由 app.js 的 applyTheme() 写在 <html> 上。
-   六个选项：纸感（默认）/ 浅色 / 深色 / 松林 / 墨蓝 / 跟随系统。
+   八个选项：纸感（默认）/ 浅色 / 浅绿 / 浅蓝 / 深色 / 松林 / 墨蓝 / 跟随系统。
    「跟随系统」在 JS 里先解析成 light 或 dark 再落到这里，所以 CSS 里没有它。
+
+   ⚠️ `--accent-sage` 这个名字是历史遗留，它其实是**主色**而不是「绿」——
+   浅蓝主题里它是蓝色的。别照字面把它当绿色用。
    ============================================================ */
 
 /* 纸感（默认）—— 米白纸面 + 暖灰，就是原本那一套 */
@@ -2009,6 +2012,44 @@ html[data-theme="light"] {
   --rgb-card-bg: 255 255 255;
   --rgb-on-accent: 255 255 255;
   --rgb-accent-sage-strong: 60 96 78;
+}
+
+/* 浅绿 —— 纸面带一层很淡的绿，主色是绿。
+   底色只敢压一点点（241 而不是 255）：它是整页最大的一块面积，
+   稍微多一点就变成「绿屏幕」，正文在上面会发闷。 */
+html[data-theme="mint"] {
+  --rgb-ink: 26 34 28;
+  --rgb-paper: 241 246 241;
+  --rgb-warm-gray: 222 231 223;
+  --rgb-muted: 132 146 135;
+  --rgb-accent-amber: 190 112 56;
+  --rgb-accent-sage: 74 122 94;
+  --rgb-accent-slate: 88 108 112;
+  --rgb-accent-rose: 176 88 88;
+  --rgb-status-active: 56 118 82;
+  --rgb-status-cooling: 176 130 42;
+  --rgb-status-abandoned: 176 88 88;
+  --rgb-card-bg: 250 253 250;
+  --rgb-on-accent: 255 255 255;
+  --rgb-accent-sage-strong: 58 98 74;
+}
+
+/* 浅蓝 —— 同上，偏冷的那一个。主色跟着主题走成蓝（见上面那条说明）。 */
+html[data-theme="sky"] {
+  --rgb-ink: 22 30 40;
+  --rgb-paper: 240 244 250;
+  --rgb-warm-gray: 219 227 238;
+  --rgb-muted: 130 142 156;
+  --rgb-accent-amber: 193 112 58;
+  --rgb-accent-sage: 66 116 132;
+  --rgb-accent-slate: 74 108 148;
+  --rgb-accent-rose: 176 88 104;
+  --rgb-status-active: 52 118 92;
+  --rgb-status-cooling: 176 130 42;
+  --rgb-status-abandoned: 176 88 104;
+  --rgb-card-bg: 250 252 255;
+  --rgb-on-accent: 255 255 255;
+  --rgb-accent-sage-strong: 52 96 112;
 }
 
 /* 深色 —— 中性暗色。重点色一律**提亮**：浅色主题里好看的 #5a7a62

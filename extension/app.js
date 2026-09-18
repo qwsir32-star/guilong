@@ -2371,7 +2371,7 @@ async function renderStaticDashboard() {
    ---------------------------------------------------------------- */
 
 /** 主题清单 —— 必须和 theme-boot.js 里的 THEME_IDS 一致（冒烟测试有断言） */
-const THEME_IDS = ['paper', 'light', 'dark', 'forest', 'ink'];
+const THEME_IDS = ['paper', 'light', 'mint', 'sky', 'dark', 'forest', 'ink'];
 const THEME_SYSTEM  = 'system';
 const DEFAULT_THEME = 'paper';
 
