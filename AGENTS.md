@@ -178,3 +178,5 @@ open "chrome://extensions"
 - 更新：`cd guilong && git pull`，然后在 `chrome://extensions` 里点扩展卡片上的刷新按钮。
   **改完记得关掉旧的新标签页重新开**——新标签页有缓存，只点刷新按钮不一定生效。
 - 本项目是 [Tab Out](https://github.com/zarazhangrui/tab-out) 的衍生版（MIT），原始署名与许可证原文见 `LICENSE`。
+  **README 里的署名只在「致谢」和「许可证」两节出现**（用户裁定，删掉了顶部的衍生说明块）——
+  MIT 只要求 LICENSE 里的版权声明，README 上写不写、写哪儿是产品决定。别再往 README 顶部加回去。

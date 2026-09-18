@@ -6,8 +6,6 @@
 
 没有服务器、不用账号、不需要任何 API key。除了取天气那一次请求，你的数据一个字节都不出机器。
 
-> **衍生说明**：本项目是 [Tab Out](https://github.com/zarazhangrui/tab-out)（作者 [Zara](https://x.com/zarazhangrui)）的衍生版，在其基础上做了中文化与若干增强。原项目采用 MIT 许可证，原始署名与许可证原文都完整保留在 [LICENSE](./LICENSE) 中。
-
 ---
 
 ## 安装
