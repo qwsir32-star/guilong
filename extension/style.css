@@ -734,7 +734,11 @@ body.dragging-site .quick-site-open {
   display: flex;            /* JS 在 none / flex 之间切 */
   flex-direction: column;
   gap: 8px;
-  margin-top: 14px;
+  /* 左右 auto 是**必须**的：上面 .quick-sites-list 是 justify-content:center，
+     站点条居中；而这张表单是块级盒子，max-width 之后默认是靠左的（margin 右是 0），
+     展开时就歪在左边、跟站点条对不齐。auto 让它落在同一条中线上。
+     写成 margin 简写会顺手把 margin-bottom 定成 0 —— 本来就是 0，没差别。 */
+  margin: 14px auto 0;
   max-width: 520px;
   padding: 14px 16px;
   border: 1px solid var(--warm-gray);
