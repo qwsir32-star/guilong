@@ -144,7 +144,7 @@ const STRINGS = {
     'badge.tabsUnit':          '个',
 
     /* ---- 打开的标签页：卡片全关掉之后的空状态 ---- */
-    'openTabs.emptyTitle':     '标签页也清零了。',
+    'openTabs.emptyTitle':     '一切清爽啦！',
     'openTabs.emptySubtitle':  '轻松了。',
 
     /* ---- 卡片上的动作按钮 ----
