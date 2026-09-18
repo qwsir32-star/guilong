@@ -29,6 +29,7 @@
  *   PART 15 字体自托管（Mac / Windows 一致 + 零网络请求）
  *   PART 16 README 结构（目录锚点不许死链 / 仓库内链接真实存在 / 许可证压轴）
  *   PART 17 界面语言（中英切换 / 默认跟随系统 / 标题走文案表）
+ *   PART 18 设置面板是居中悬浮的模态（<dialog> + showModal + 背板虚化）
  */
 const fs = require('fs');
 const path = require('path');
@@ -52,6 +53,7 @@ const code = fs.readFileSync(APP, 'utf8') + `
   updatePinnedSite, movePinnedSite, promoteTopSite,
   faviconSignature, dropIfDefaultFavicon,
   getUiPrefs, setUiPref, applyUiPrefs, looksLikeUrl, runSearch, focusSearchBox,
+  openSettingsPanel, closeSettingsPanel,
   resolveTheme, normalizeTheme, paintTheme, mirrorTheme, isDarkTheme,
   readSettingValue,
   systemLanguage, applyLanguage,
@@ -2422,6 +2424,131 @@ function part17() {
       .filter(f => /默认中文/.test(fs.readFileSync(path.join(ROOT, f), 'utf8'))), []);
 }
 
+/* =================================================================
+   PART 18 — 设置面板是「居中悬浮的模态」
+
+   需求原话：「按一下设置按钮之后的逻辑不是让设置面板出现在和页面平行的
+   空间中，而是类似于一个独立的面板，不改变页面的逻辑，居中悬浮的感觉，
+   页面虚化。」
+
+   翻成三条可验证的性质：
+     ① **不改变页面布局** —— 面板必须脱离文档流。做法是原生 <dialog> +
+        showModal()，浏览器把它放进 top layer；写成普通 div 再切 class 的话
+        它还在流里，下面的网格会被顶下去，正是要改掉的那个行为。
+     ② **居中悬浮** —— 交给对话框的原生默认（inset:0 + margin:auto），
+        自己不写 margin 去凑。
+     ③ **页面虚化** —— 只能挂在 ::backdrop 上。挂到面板本身上虚化的是面板
+        自己，观感正好相反，而且**不会报错**。
+
+   前两条靠直接调 openSettingsPanel / closeSettingsPanel 验行为，
+   第三条只能静态扫 CSS 文本 —— 冒烟测试跑不了真正的合成渲染。
+   ================================================================= */
+
+/** 造一个会真的记录 class 和开关状态的假面板（fakeDomNode 的 classList 是空壳） */
+function fakePanelNode() {
+  const classes = new Set();
+  return {
+    open: false,
+    showModalCalls: 0,
+    closeCalls: 0,
+    style: {},
+    dataset: {},
+    classList: {
+      add: c => classes.add(c),
+      remove: c => classes.delete(c),
+      toggle: (c, on) => {
+        if (on === undefined) { classes.has(c) ? classes.delete(c) : classes.add(c); }
+        else if (on) classes.add(c); else classes.delete(c);
+      },
+      contains: c => classes.has(c),
+    },
+    showModal() { this.showModalCalls++; this.open = true; },
+    close() { this.closeCalls++; this.open = false; },
+  };
+}
+
+function part18() {
+  console.log('\n[PART 18] 设置面板：居中悬浮的模态');
+
+  /* ---- 行为：开 / 关走的是对话框的原生开关，不是切 class ---- */
+  const panel = fakePanelNode();
+  const gear  = fakePanelNode();
+  domNodes.set('settingsPanel', panel);
+  domNodes.set('settingsToggle', gear);
+
+  check('openSettingsPanel 走 showModal()（脱离文档流，不是切 class）',
+    (T.openSettingsPanel(), [panel.showModalCalls, panel.open]), [1, true]);
+  check('  齿轮同步进入打开态', gear.classList.contains('open'), true);
+
+  // ⚠️ 对已经打开的 dialog 再 showModal() 会抛 InvalidStateError。
+  // 真机上「打开设置 → 换主题 → 又点一下齿轮」就会走到这里。
+  check('已经开着时再调一次不会重复 showModal()',
+    (T.openSettingsPanel(), panel.showModalCalls), 1);
+
+  check('closeSettingsPanel 走原生 close()',
+    (T.closeSettingsPanel(), [panel.closeCalls, panel.open]), [1, false]);
+  check('  齿轮同步熄灭（Esc 关掉时也靠这条路径补回来）',
+    gear.classList.contains('open'), false);
+  check('对已经关着的面板再关一次不抛错',
+    (T.closeSettingsPanel(), panel.closeCalls > 1), true);
+
+  // 面板 id 不在页面上时（比如别的页面复用了这个脚本）不许炸
+  domNodes.delete('settingsPanel');
+  check('找不到面板时打开返回 false、不抛错', T.openSettingsPanel(), false);
+  check('  关闭同样不抛错', (T.closeSettingsPanel(), true), true);
+  domNodes.set('settingsPanel', panel);
+
+  /* ---- 静态 ---- */
+  const HTML_SRC = srcOf('index.html');
+  const CSS_SRC  = fs.readFileSync(path.join(EXT, 'style.css'), 'utf8');
+  const APP_SRC  = fs.readFileSync(APP, 'utf8');
+
+  check('设置面板是 <dialog>，不是普通 div',
+    /<dialog[^>]*class="settings-panel"[^>]*id="settingsPanel"/.test(HTML_SRC), true);
+  check('  面板里有关闭按钮（并走文案表拿无障碍名字）',
+    /data-action="close-settings"[\s\S]{0,120}data-i18n-title="settings\.close"/.test(HTML_SRC),
+    true);
+
+  // 面板本体上**不许**写 display：浏览器靠 dialog:not([open]) 自己收起来，
+  // 我们再写一条 display 就把它顶死了（面板会一直杵在页面上）。
+  // ⚠️ 要收**所有** .settings-panel 样式块，不能只看第一个 —— 后面再补一条
+  //    覆盖规则（比如夹在 @media 里）就绕过去了。::backdrop 是伪元素，
+  //    这里的正则匹配不到它。
+  const panelRules = [...CSS_SRC.matchAll(/\.settings-panel\s*\{([^}]*)\}/g)].map(m => m[1]);
+  const panelCss   = panelRules.join('\n');
+  check('扫到了设置面板的样式块', panelRules.length >= 1, true);
+  check('设置面板的 CSS 里没有 display（会和 dialog 自己的开关状态打架）',
+    panelRules.filter(r => /\bdisplay\s*:/.test(r)), []);
+  // ⚠️ 居中必须自己写死。UA 的模态 dialog 只把**纵向** inset 归零，横向还停在
+  // 它的「静态位置」上（容器的左内边距）—— 真机上第一次就是这么错的，
+  // 面板贴着左上角，看着完全不像「居中悬浮」。
+  check('  居中自己写死（position:fixed + inset:0 + margin:auto）',
+    /position\s*:\s*fixed/.test(panelCss)
+      && /(?:^|;)\s*inset\s*:\s*0/.test(panelCss)
+      && /margin\s*:\s*auto/.test(panelCss), true);
+
+  check('backdrop-filter 挂在 ::backdrop 上（页面虚化）',
+    /\.settings-panel::backdrop\s*\{[^}]*backdrop-filter\s*:\s*blur\(\s*[1-9]/.test(CSS_SRC), true);
+  check('  而不是挂在面板本身上（那样虚化的是面板自己，观感正好相反）',
+    panelRules.filter(r => /backdrop-filter/.test(r)), []);
+
+  check('打开面板用的是 showModal()', /\.showModal\(\)/.test(APP_SRC), true);
+  check('判断面板开没开读原生 panel.open，不读 class（Esc 关掉后 class 会过期）',
+    /panel\.classList\.(contains|toggle)\(\s*'open'/.test(APP_SRC), false);
+
+  // 只切「面板自己身上那两个监听」这一段再找，避免跨块正则跑到别处去
+  const wireFrom = APP_SRC.indexOf('function wireSettingsPanel');
+  const wireTo   = APP_SRC.indexOf('\n})();', wireFrom);
+  const wireBlock = wireFrom > -1 && wireTo > wireFrom ? APP_SRC.slice(wireFrom, wireTo) : '';
+  check('切出了面板自己的事件绑定块', wireBlock.length > 0, true);
+  check('  挂了 close 事件（Esc 关闭后齿轮状态要同步）',
+    /panel\.addEventListener\('close'/.test(wireBlock), true);
+  check('  点背板关闭前先量落点在不在面板里',
+    /getBoundingClientRect\(\)/.test(wireBlock), true);
+  check('    否则点面板的内边距也会误判成「点了背板」',
+    /e\.target !== panel/.test(wireBlock), true);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -2441,6 +2568,7 @@ function part17() {
   part15();
   part16();
   part17();
+  part18();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

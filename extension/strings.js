@@ -109,6 +109,7 @@ const STRINGS = {
     /* ---- 设置面板（页头齿轮）---- */
     'settings.button':         '设置',
     'settings.title':          '设置',
+    'settings.close':          '关闭',
     'settings.quickSites.name': '常用站点条',
     'settings.quickSites.desc': '把常用网站钉在这里，一点就到。关掉只是不显示，钉过的不会丢。',
     'settings.searchBox.name':  '搜索框',
@@ -326,6 +327,7 @@ const STRINGS = {
 
     'settings.button':         'Settings',
     'settings.title':          'Settings',
+    'settings.close':          'Close',
     'settings.quickSites.name': 'Quick sites bar',
     'settings.quickSites.desc': 'Pin the sites you use most. Turning this off only hides the bar — nothing you pinned is lost.',
     'settings.searchBox.name':  'Search box',

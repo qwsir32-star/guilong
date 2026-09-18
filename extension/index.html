@@ -86,9 +86,27 @@
        设置面板 —— 点页头的齿轮才展开
        每一项只控制「显示不显示」。关掉不会删任何数据：已经钉住的站点、
        隐藏名单都原样留在 storage 里，重新打开就回来了。
+
+       ⚠️ 它是 <dialog> + showModal()，不是普通的 div：
+         · 模态 dialog 由浏览器放进 **top layer**，天生脱离文档流 ——
+           开面板不会把下面的标签页网格顶下去，页面布局一点不变。
+         · Esc 关闭、焦点锁在面板里、点背板关闭，都是原生行为。
+         · ::backdrop 就是背后那层虚化。
+       写成普通 div 再靠 position:fixed 硬撑的话，上面这几件事都得自己糊一遍。
        ================================================================ -->
-  <div class="settings-panel" id="settingsPanel">
-    <p class="settings-title" data-i18n="settings.title"></p>
+  <dialog class="settings-panel" id="settingsPanel">
+    <div class="settings-head">
+      <p class="settings-title" data-i18n="settings.title"></p>
+      <!-- 关闭按钮的文字走文案表（data-i18n-title → title 属性，同时也是它的
+           无障碍名字 —— 图标本身 aria-hidden，念屏器不会念出来） -->
+      <button class="settings-close" data-action="close-settings"
+              data-i18n-title="settings.close">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16"
+             stroke-width="1.6" stroke="currentColor" aria-hidden="true" focusable="false">
+          <path stroke-linecap="round" d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+        </svg>
+      </button>
+    </div>
 
     <!-- 界面语言 —— 和主题一样是下拉。value 是 'system' / 'zh' / 'en'，
          option 的文字走文案表（data-i18n），别拿它的文字做判断
@@ -182,7 +200,7 @@
       <kbd class="shortcut-keys" id="shortcutKeys"></kbd>
       <button class="action-btn" data-action="change-shortcut" data-i18n="settings.shortcut.change"></button>
     </div>
-  </div>
+  </dialog>
 
   <!-- ================================================================
        常用站点条 — 手动钉住的在前，chrome.topSites 自动补足

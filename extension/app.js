@@ -2578,6 +2578,66 @@ async function applyUiPrefs() {
 }
 
 /* ----------------------------------------------------------------
+   设置面板：居中悬浮的模态
+
+   它是 <dialog>，所以「开 / 关」走 showModal() / close()，**不是切 class** ——
+   切 class 的话面板仍留在文档流里，下面的网格会被顶下去，而且拿不到
+   top layer，背板虚化（::backdrop）也就无从谈起。
+
+   Esc 关闭、焦点锁在面板内是浏览器给的，不用自己糊。要自己补的只有两件：
+     ① 关掉之后把齿轮的 .open 状态同步回来 —— Esc 和点背板都不走我们的
+        点击分支，光靠那里加 class 会留下一个「亮着但没打开」的齿轮；
+     ② 点背板关闭。判据是「落点不在面板矩形内」，不能只看 e.target ——
+        面板自己的内边距也会让 target 变成 dialog 本身，那样点空白边就误关了。
+   ---------------------------------------------------------------- */
+
+/** 关掉设置面板（对已经关着的 dialog 也安全，不用先判 open） */
+function closeSettingsPanel() {
+  const panel = document.getElementById('settingsPanel');
+  if (panel) {
+    if (typeof panel.close === 'function') panel.close();
+    else panel.removeAttribute('open');          // 没有 dialog 支持时的兜底
+  }
+  const toggle = document.getElementById('settingsToggle');
+  if (toggle) toggle.classList.remove('open');
+}
+
+/** 打开设置面板。成功返回 true */
+function openSettingsPanel() {
+  const panel = document.getElementById('settingsPanel');
+  if (!panel) return false;
+  if (typeof panel.showModal === 'function') {
+    // ⚠️ 对已经打开的 dialog 再 showModal() 会抛 InvalidStateError
+    if (!panel.open) panel.showModal();
+  } else {
+    panel.setAttribute('open', '');              // 老浏览器兜底：至少能看见
+  }
+  const toggle = document.getElementById('settingsToggle');
+  if (toggle) toggle.classList.add('open');
+  return true;
+}
+
+// 面板自己身上的两个事件 —— 只在加载时挂一次。
+// 沙箱里 getElementById 拿不到这个 id（或拿到的是个壳），直接跳过。
+(function wireSettingsPanel() {
+  const panel = document.getElementById('settingsPanel');
+  if (!panel || !panel.addEventListener) return;
+
+  panel.addEventListener('close', () => {
+    const toggle = document.getElementById('settingsToggle');
+    if (toggle) toggle.classList.remove('open');
+  });
+
+  panel.addEventListener('click', (e) => {
+    if (e.target !== panel) return;              // 点在面板内容上，不管
+    const r = panel.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right
+                && e.clientY >= r.top  && e.clientY <= r.bottom;
+    if (!inside) closeSettingsPanel();
+  });
+})();
+
+/* ----------------------------------------------------------------
    呼出快捷键（设置面板里那一行）
 
    ⚠️ Chrome 的 commands API **只能读，不能写**。commands.update() 和
@@ -3261,20 +3321,25 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
-  // ---- 设置面板：展开 / 收起 ----
+  // ---- 设置面板：展开 / 收起（模态，见 openSettingsPanel / closeSettingsPanel）----
   if (action === 'toggle-settings') {
-    const panel  = document.getElementById('settingsPanel');
-    const toggle = document.getElementById('settingsToggle');
+    const panel = document.getElementById('settingsPanel');
     if (!panel) return;
 
-    const open = !panel.classList.contains('open');
-    panel.classList.toggle('open', open);
-    if (toggle) toggle.classList.toggle('open', open);
+    // ⚠️ 开没开要读**原生属性** panel.open，不能读 class：Esc 和点背板那两条
+    // 关闭路径不经过这里，class 记的状态会过期，齿轮就会「按一下没反应」。
+    if (panel.open) { closeSettingsPanel(); return; }
+    if (!openSettingsPanel()) return;
+
     // 面板是刚展开的，顺手把快捷键和天气城市都读一次 —— 上次看之后可能改过了
-    if (open) {
-      await renderShortcutSetting();
-      await renderWeatherPlaceSetting();
-    }
+    await renderShortcutSetting();
+    await renderWeatherPlaceSetting();
+    return;
+  }
+
+  // ---- 设置面板：右上角那个 × ----
+  if (action === 'close-settings') {
+    closeSettingsPanel();
     return;
   }
 
