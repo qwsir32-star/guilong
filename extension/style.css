@@ -1909,7 +1909,10 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   flex-shrink: 0;
 }
 
-/* ---- 归档条目的删除按钮（与 .deferred-dismiss 同款观感）---- */
+/* ---- 归档条目的两个按钮（与 .deferred-dismiss 同款观感）----
+   还原 hover 走 sage（把东西拿回来，是正向的）；删除走 abandoned（红）。
+   两个颜色不一样是故意的：挨在一起、形状又一样，全靠颜色区分。 */
+.archive-restore,
 .archive-delete {
   background: none;
   border: none;
@@ -1921,9 +1924,15 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   flex-shrink: 0;
 }
 
+.archive-restore svg,
 .archive-delete svg {
   width: 13px;
   height: 13px;
+}
+
+.archive-restore:hover {
+  opacity: 1;
+  color: var(--accent-sage);
 }
 
 .archive-delete:hover {
@@ -1938,8 +1947,10 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-/* ---- 「关闭全部」的确认态：颜色加重，明确区分于普通态 ---- */
-.action-btn.close-tabs.confirming {
+/* ---- 需要「再点一次」的按钮的确认态：颜色加重，明确区分于普通态 ----
+   ⚠️ 选择器不要再挂 `.close-tabs`：一键删除也用这套确认态，挂回去的话
+   新按钮进了确认态却没有任何视觉反馈 —— 不报错，只是看起来「点了没反应」。 */
+.action-btn.confirming {
   background: var(--border-amber);
   border-color: var(--accent-amber);
   color: var(--accent-amber);

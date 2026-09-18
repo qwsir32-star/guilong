@@ -284,6 +284,88 @@ async function dismissSavedTab(id) {
 }
 
 /**
+ * clearAllSavedTabs()
+ *
+ * 把「稍后再看」里所有**未打勾**的条目一次性删掉。归档里的不动 ——
+ * 归档是「已经看完」的记录，清空待办不该把看过的历史一起抹掉。
+ *
+ * 复用 dismissed 标记而不是真删：单条删除用的就是这个字段，两边必须一致，
+ * 否则「一键删除」和一条一条删会走向两套语义，以后加撤销的时候会打架。
+ *
+ * @returns {Promise<number>} 实际删掉的条数
+ */
+async function clearAllSavedTabs() {
+  const { active } = await getSavedTabs();
+  if (active.length === 0) return 0;
+
+  const { deferred = [] } = await chrome.storage.local.get('deferred');
+  const ids = new Set(active.map(t => t.id));
+
+  let removed = 0;
+  deferred.forEach(t => {
+    if (ids.has(t.id)) { t.dismissed = true; removed += 1; }
+  });
+
+  await chrome.storage.local.set({ deferred });
+  return removed;
+}
+
+/**
+ * restoreArchivedTab(id)
+ *
+ * 把一条归档还原回「稍后再看」—— 就是把 completed 翻回 false。
+ *
+ * ⚠️ completedAt 必须一起清掉：留着的话这条虽然回到了待办，下次再打勾时
+ * 归档区显示的「多久之前」会是旧的那个时间，而不是这次的。
+ */
+/** 确认态挂多久自动复位（毫秒） */
+const CONFIRM_RESET_MS = 5000;
+
+/**
+ * 两段式确认（arm → fire）
+ *
+ * 第一次点：只把按钮切进确认态（换文案 + 变色），返回 `false`，调用方
+ * 什么都不做；第二次点才返回 `true` 放行。`resetMs` 内没动静就自动复位，
+ * 免得按钮一直挂在「再点一次就删掉」的状态上。
+ *
+ * 「关闭全部」和「一键删除」共用这一份 —— 这两处原本各抄了一遍，抄第二遍
+ * 时漏掉自动复位也不会有人发现（不报错，只是按钮一直红着，看着像卡住了）。
+ *
+ * @param {HTMLElement} actionEl  被点的那个按钮
+ * @param {string} confirmHtml    确认态要显示的 HTML
+ * @param {number} [resetMs]      自动复位的等待毫秒数（测试里传小一点）
+ * @returns {boolean} true = 这次真的执行
+ */
+function confirmOrArm(actionEl, confirmHtml, resetMs = CONFIRM_RESET_MS) {
+  if (actionEl.dataset.confirming === '1') return true;
+
+  const originalHtml = actionEl.innerHTML;
+  actionEl.dataset.confirming = '1';
+  actionEl.classList.add('confirming');
+  actionEl.innerHTML = confirmHtml;
+
+  setTimeout(() => {
+    if (!actionEl.isConnected) return;
+    actionEl.dataset.confirming = '';
+    actionEl.classList.remove('confirming');
+    actionEl.innerHTML = originalHtml;
+  }, resetMs);
+
+  return false;
+}
+
+async function restoreArchivedTab(id) {
+  const { deferred = [] } = await chrome.storage.local.get('deferred');
+  const tab = deferred.find(t => t.id === id);
+  if (!tab) return false;
+
+  tab.completed = false;
+  delete tab.completedAt;
+  await chrome.storage.local.set({ deferred });
+  return true;
+}
+
+/**
  * openAllSavedTabs()
  *
  * 一键打开「Saved for later」里所有还没打勾的条目。
@@ -1719,6 +1801,9 @@ async function renderDeferredColumn() {
         actionsEl.innerHTML = `
           <button class="action-btn save-tabs" data-action="open-all-saved">
             ${ICONS.tabs} ${T('deferred.openAll', { n: active.length })}
+          </button>
+          <button class="action-btn danger clear-saved" data-action="clear-all-saved">
+            ${ICONS.close} ${T('deferred.clearAll', { n: active.length })}
           </button>`;
         actionsEl.style.display = 'flex';
       } else {
@@ -1785,6 +1870,9 @@ function renderArchiveItem(item) {
         ${item.title || item.url}
       </a>
       <span class="archive-item-date">${ago}</span>
+      <button class="archive-restore" data-action="restore-archived" data-deferred-id="${item.id}" title="${T('archive.restore')}">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" /></svg>
+      </button>
       <button class="archive-delete" data-action="delete-archived" data-deferred-id="${item.id}" title="${T('archive.delete')}">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
       </button>
@@ -3422,6 +3510,44 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  // ---- 一键删除「稍后再看」里所有未打勾的条目 ----
+  if (action === 'clear-all-saved') {
+    const { active } = await getSavedTabs();
+
+    // 一次清空整个待办清单是不可逆的，这种按钮不能一点就生效
+    const armed = confirmOrArm(
+      actionEl, `${ICONS.close}${T('toast.confirmClearSaved', { n: active.length })}`);
+    if (!armed) return;
+
+    const removed = await clearAllSavedTabs();
+    // 重画会把整个按钮区重建一遍，确认态自然就没了，不用手动复位
+    await renderDeferredColumn();
+    if (removed > 0) showToast(T('toast.clearedSaved', { n: removed }));
+    return;
+  }
+
+  // ---- 归档还原：把一条归档放回「稍后再看」----
+  // 只翻 completed 标记，不碰 dismissed —— 还原的是「还没看完」，
+  // 被删掉的条目（dismissed）不属于任何一边，不该被还原捞回来。
+  if (action === 'restore-archived') {
+    const id = actionEl.dataset.deferredId;
+    if (!id) return;
+
+    await restoreArchivedTab(id);
+
+    const item = actionEl.closest('.archive-item');
+    if (item) {
+      item.classList.add('removing');
+      setTimeout(() => {
+        item.remove();
+        // 归档少一条、待办多一条，两块都要重画（归档空了整块会自动收起）
+        renderDeferredColumn();
+      }, 300);
+    }
+    showToast(T('toast.archivedRestored'));
+    return;
+  }
+
   // ---- 批量：把当前所有标签页存进 saved for later（data-close-after=1 时存完就关）----
   if (action === 'save-all-open-tabs') {
     const closeAfter = actionEl.dataset.closeAfter === '1';
@@ -3535,24 +3661,11 @@ document.addEventListener('click', async (e) => {
   if (action === 'close-all-open-tabs') {
     const targets = openTabs.filter(t => t.url && !t.url.startsWith('chrome') && !t.url.startsWith('about:'));
 
-    // 第一次点击：只进入确认态，一个标签页都不动
-    if (actionEl.dataset.confirming !== '1') {
-      const originalHtml = actionEl.innerHTML;
-      actionEl.dataset.confirming = '1';
-      actionEl.classList.add('confirming');
-      actionEl.innerHTML = `${ICONS.close}${T('toast.confirmCloseAll', { n: targets.length })}`;
+    // 第一次点击：只进入确认态，一个标签页都不动（第二次点才真的关）
+    const armed = confirmOrArm(
+      actionEl, `${ICONS.close}${T('toast.confirmCloseAll', { n: targets.length })}`);
+    if (!armed) return;
 
-      // 5 秒无操作自动复位，避免按钮一直挂在危险状态上
-      setTimeout(() => {
-        if (!actionEl.isConnected) return;
-        actionEl.dataset.confirming = '';
-        actionEl.classList.remove('confirming');
-        actionEl.innerHTML = originalHtml;
-      }, 5000);
-      return;
-    }
-
-    // 第二次点击：才真的关
     const allUrls = targets.map(t => t.url);
     await closeTabsByUrls(allUrls);
     playCloseSound();

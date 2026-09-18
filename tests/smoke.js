@@ -24,6 +24,7 @@
  *   PART 10 版式静态守卫（页头网格 / 天气条位置 / 设置面板结构）
  *   PART 11 当地天气（本地城市库 / 缓存 / 失败要安静）
  *   PART 12 主题色（解析 / 落 <html> / localStorage 镜像 / 主题块只写三元组）
+ *   PART 13 稍后再看 / 归档（一键删除 / 归档还原 / 确认态 / 文案）
  */
 const fs = require('fs');
 const path = require('path');
@@ -39,6 +40,8 @@ const code = fs.readFileSync(APP, 'utf8') + `
 ;globalThis.__t = {
   matchSiteMerge, friendlyDomain, SITE_MERGE_RULES,
   saveAllOpenTabs, openAllSavedTabs, getSavedTabs, fetchOpenTabs,
+  dismissSavedTab, checkOffSavedTab, clearAllSavedTabs, restoreArchivedTab,
+  confirmOrArm, CONFIRM_RESET_MS,
   normalizeSiteUrl, siteKey, siteLabel, getQuickSites, sameEntryUrl, originOf,
   isSiteRoot, pathHintOf, suggestSiteName, resolveSiteIcon,
   pinSite, unpinSite, hideTopSite, openQuickSite,
@@ -1729,6 +1732,163 @@ async function part12() {
       .filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
 }
 
+async function part13() {
+  console.log('\n[PART 13] 稍后再看 / 归档');
+
+  const APP_SRC = fs.readFileSync(APP, 'utf8');
+  const CSS_SRC = fs.readFileSync(path.join(EXT, 'style.css'), 'utf8');
+
+  // 三条待办（未打勾）+ 两条归档（已打勾）+ 一条被删掉的
+  const seed = () => {
+    store.deferred = [
+      { id: 'a1', url: 'https://a.com/1', title: 'A', completed: false, dismissed: false },
+      { id: 'a2', url: 'https://b.com/2', title: 'B', completed: false, dismissed: false },
+      { id: 'a3', url: 'https://c.com/3', title: 'C', completed: false, dismissed: false },
+      { id: 'r1', url: 'https://d.com/4', title: 'D', completed: true,
+        completedAt: new Date().toISOString(), dismissed: false },
+      { id: 'r2', url: 'https://e.com/5', title: 'E', completed: true,
+        completedAt: new Date().toISOString(), dismissed: false },
+      { id: 'x1', url: 'https://f.com/6', title: 'F', completed: false, dismissed: true },
+    ];
+  };
+
+  /* ---- 基础分堆 ---- */
+  seed();
+  let tabs = await T.getSavedTabs();
+  check('没打勾的进待办、打勾的进归档',
+    [tabs.active.map(t => t.id), tabs.archived.map(t => t.id)],
+    [['a1', 'a2', 'a3'], ['r1', 'r2']]);
+  check('被删掉的哪边都不在',
+    [...tabs.active, ...tabs.archived].some(t => t.id === 'x1'), false);
+
+  /* ---- 一键删除 ---- */
+  seed();
+  check('一键删除返回删掉的条数', await T.clearAllSavedTabs(), 3);
+  tabs = await T.getSavedTabs();
+  check('  待办清空了', tabs.active.map(t => t.id), []);
+  check('  归档一条没动', tabs.archived.map(t => t.id), ['r1', 'r2']);
+
+  // 走的是 dismissed 标记，和单条删除同一个字段 —— 两套语义以后会打架
+  check('  删掉的是打标记，不是真从存储里抹掉',
+    store.deferred.filter(t => t.dismissed).map(t => t.id).sort(),
+    ['a1', 'a2', 'a3', 'x1']);
+
+  // 归档里那些虽然也在 deferred 里，但不能被一键删除扫到
+  check('  归档条目没有被顺手打上 dismissed',
+    store.deferred.filter(t => t.id === 'r1' || t.id === 'r2').map(t => !!t.dismissed),
+    [false, false]);
+
+  store.deferred = [
+    { id: 'r1', url: 'https://d.com/4', title: 'D', completed: true, dismissed: false },
+  ];
+  check('待办已经是空的 → 返回 0', await T.clearAllSavedTabs(), 0);
+  check('  而且归档还是原样', (await T.getSavedTabs()).archived.length, 1);
+
+  store.deferred = [];
+  check('什么都没有时也不炸', await T.clearAllSavedTabs(), 0);
+
+  /* ---- 归档还原 ---- */
+  seed();
+  check('还原一条归档', await T.restoreArchivedTab('r1'), true);
+  tabs = await T.getSavedTabs();
+  check('  它回到了待办里', tabs.active.map(t => t.id), ['a1', 'a2', 'a3', 'r1']);
+  check('  归档里少了一条', tabs.archived.map(t => t.id), ['r2']);
+
+  const restored = store.deferred.find(t => t.id === 'r1');
+  check('  completed 翻回 false', restored.completed, false);
+  // completedAt 留着的话，这条下次再归档时显示的「多久之前」是上一轮的时间
+  check('  completedAt 被清掉了（不许留着旧时间）',
+    'completedAt' in restored, false);
+
+  check('还原不存在的 id → false，不炸', await T.restoreArchivedTab('不存在的'), false);
+  check('  undefined 也一样', await T.restoreArchivedTab(undefined), false);
+
+  // 往返一次：还原 → 再打勾 → 再还原。归档区的时间戳每次都该是新的
+  await T.checkOffSavedTab('r1');
+  check('还原完再打勾，又回到归档', (await T.getSavedTabs()).archived.map(t => t.id).sort(),
+    ['r1', 'r2']);
+  check('  这一轮重新记了 completedAt',
+    typeof store.deferred.find(t => t.id === 'r1').completedAt, 'string');
+
+  // 被删掉的条目（dismissed）不该被还原捞回来
+  seed();
+  await T.restoreArchivedTab('x1');
+  check('被删掉的条目不会被还原捞回来',
+    [...(await T.getSavedTabs()).active.map(t => t.id)], ['a1', 'a2', 'a3']);
+
+  /* ---- 两段式确认 ----
+     别用「源码里有没有 dataset.confirming 这行字」去守：把 `if (cond)` 改成
+     `if (false)` 那段文本还在，正则照样匹配得上 —— 一条永远不会红的守卫
+     不是守卫。所以这里直接调 confirmOrArm 验行为。 */
+  function fakeArmButton() {
+    return {
+      dataset: {},
+      innerHTML: '原始文案',
+      isConnected: true,
+      _classes: new Set(),
+      classList: {
+        add(c)    { this._owner._classes.add(c); },
+        remove(c) { this._owner._classes.delete(c); },
+      },
+    };
+  }
+  function armButton() { const b = fakeArmButton(); b.classList._owner = b; return b; }
+
+  const btn = armButton();
+  check('第一次点不放行（只进入确认态）', T.confirmOrArm(btn, '确认？', 20), false);
+  check('  按钮进了确认态', btn.dataset.confirming, '1');
+  check('  文案换成确认态的那句', btn.innerHTML, '确认？');
+  check('  加了 confirming 类（不然点了毫无视觉反馈）',
+    [...btn._classes], ['confirming']);
+  check('第二次点才放行', T.confirmOrArm(btn, '确认？', 20), true);
+
+  const btn2 = armButton();
+  T.confirmOrArm(btn2, '确认？', 20);
+  await new Promise(r => setTimeout(r, 80));
+  check('超时自动复位（不会一直挂在「再点一次就删」上）',
+    [btn2.dataset.confirming, btn2.innerHTML], ['', '原始文案']);
+  check('  复位把 confirming 类也去掉了', [...btn2._classes], []);
+
+  // 按钮已经被移出 DOM 时（列表重画）不该再往回写，写了会复活一个死节点
+  const btn3 = armButton();
+  T.confirmOrArm(btn3, '确认？', 20);
+  btn3.isConnected = false;
+  btn3.innerHTML = '被重画覆盖过';
+  await new Promise(r => setTimeout(r, 80));
+  check('  按钮已不在 DOM 里就不复位（别覆盖新按钮）', btn3.innerHTML, '被重画覆盖过');
+
+  /* ---- 静态守卫 ----
+     ⚠️ 别写 `/action === 'x'[\s\S]*?confirmOrArm\(/`：那串 `[\s\S]*?` 会一路
+     跨到**后面**的其它处理块里去，于是在这个块里把确认删掉、守卫照样是绿的
+     （变异测试当场抓到了这条）。必须先切出这一个处理块再找。 */
+  const handlerBlock = (src, name) => {
+    const start = src.indexOf(`if (action === '${name}') {`);
+    if (start === -1) return '';
+    const end = src.indexOf("\n  if (action === '", start + 1);
+    return src.slice(start, end === -1 ? src.length : end);
+  };
+
+  check('一键删除真的走了 confirmOrArm',
+    handlerBlock(APP_SRC, 'clear-all-saved').includes('confirmOrArm('), true);
+  check('关闭全部也复用同一份确认逻辑（不再各抄一遍）',
+    handlerBlock(APP_SRC, 'close-all-open-tabs').includes('confirmOrArm('), true);
+  check('  源码里没有第二份手抄的确认代码',
+    (APP_SRC.match(/dataset\.confirming/g) || []).length, 3);
+
+  // 确认态的样式如果只认 .close-tabs，新按钮点了会毫无视觉反馈
+  check('确认态的样式不再只认 .close-tabs',
+    /\.action-btn\.confirming\s*\{/.test(CSS_SRC), true);
+
+  check('归档条目里有还原按钮', APP_SRC.includes("data-action=\"restore-archived\""), true);
+  check('  还原按钮在删除按钮前面（正向动作在前）',
+    APP_SRC.indexOf('restore-archived') < APP_SRC.indexOf('delete-archived'), true);
+
+  const newKeys = ['deferred.clearAll', 'archive.restore',
+    'toast.confirmClearSaved', 'toast.clearedSaved', 'toast.archivedRestored'];
+  check('新增文案中英齐全',
+    newKeys.filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -1743,6 +1903,7 @@ async function part12() {
   part10();
   await part11();
   await part12();
+  await part13();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

@@ -157,12 +157,14 @@ const STRINGS = {
     'deferred.empty':          '还没存东西，活在当下。',
     'deferred.dismiss':        '删掉这条',
     'deferred.openAll':        '全部打开 {n} 个',
+    'deferred.clearAll':       '一键删除 {n} 条',
 
     /* ---- 归档 ---- */
     'archive.toggle':          '归档',
     'archive.searchPlaceholder': '搜索归档…',
     'archive.noResults':       '没有匹配的条目',
     'archive.delete':          '从归档中删除',
+    'archive.restore':         '还原到稍后再看',
 
     /* ---- 钉住表单 ---- */
     'pin.formTitleNew':        '钉住一个网站',
@@ -208,6 +210,9 @@ const STRINGS = {
     'toast.saveFailed':        '存入失败',
     'toast.savedForLater':     '已存入稍后再看',
     'toast.archivedDeleted':   '已从归档删除',
+    'toast.archivedRestored':  '已还原到稍后再看',
+    'toast.confirmClearSaved': '确认删除这 {n} 条？再点一次',
+    'toast.clearedSaved':      '已删除 {n} 条',
     'toast.noItemsToOpen':     '没有可打开的条目',
     'toast.openedInBackground':'已在后台打开 {n} 个标签页',
     'toast.batchSaveFailed':   '批量存入失败',
@@ -329,11 +334,13 @@ const STRINGS = {
     'deferred.empty':          'Nothing saved. Living in the moment.',
     'deferred.dismiss':        'Dismiss',
     'deferred.openAll':        'Open all {n}',
+    'deferred.clearAll':       'Delete all {n}',
 
     'archive.toggle':          'Archive',
     'archive.searchPlaceholder': 'Search archived tabs…',
     'archive.noResults':       'No results',
     'archive.delete':          'Delete from archive',
+    'archive.restore':         'Move back to Saved for later',
 
     'pin.formTitleNew':        'Pin a site',
     'pin.formTitleEdit':       'Edit this entry',
@@ -375,6 +382,9 @@ const STRINGS = {
     'toast.saveFailed':        'Failed to save tab',
     'toast.savedForLater':     'Saved for later',
     'toast.archivedDeleted':   'Deleted from archive',
+    'toast.archivedRestored':  'Moved back to Saved for later',
+    'toast.confirmClearSaved': 'Delete {n} items? Click again to confirm',
+    'toast.clearedSaved':      'Deleted {n} items',
     'toast.noItemsToOpen':     'Nothing to open',
     'toast.openedInBackground':'Opened {n} tabs in the background',
     'toast.batchSaveFailed':   'Could not save tabs',
