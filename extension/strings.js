@@ -98,6 +98,14 @@ const STRINGS = {
     'weather.storm':           '雷雨',
     'weather.unknown':         '天气',
 
+    /* ---- 人口（城市搜索结果里用来分辨同名地名）----
+       四个键中英都在，但**实际用哪两个跟着语言走**（见 formatPopulation）：
+       中文用「万 / 人」，英文用「M / k」。别只加一边 —— PART 9 会抓中英词目不齐。 */
+    'weather.pop.wan':         '{n} 万人',
+    'weather.pop.people':      '{n} 人',
+    'weather.pop.million':     '{n} 百万人',
+    'weather.pop.k':           '{n} 千人',
+
     /* ---- 天气：设置面板里那两行 ---- */
     'settings.weather.name':         '当地天气',
     'settings.weather.desc':         '在新标签页显示所选城市的实时天气。关掉只是不显示，选过的城市不会丢。',
@@ -266,6 +274,11 @@ const STRINGS = {
     'weather.snowShowers':     'Snow showers',
     'weather.storm':           'Thunderstorm',
     'weather.unknown':         'Weather',
+
+    'weather.pop.wan':         '{n} wan',
+    'weather.pop.people':      '{n} people',
+    'weather.pop.million':     '{n}M',
+    'weather.pop.k':           '{n}k',
 
     'settings.weather.name':         'Local weather',
     'settings.weather.desc':         'Show live weather for the city you pick, right on the new tab. Turning this off only hides it — your city stays saved.',

@@ -2446,7 +2446,10 @@ const WEATHER_GEOCODE_HOST = 'https://geocoding-api.open-meteo.com';
 // 拉不到就继续用这份旧的，总比空着强。
 const WEATHER_TTL_MS      = 20 * 60 * 1000;
 const WEATHER_TIMEOUT_MS  = 8000;
-const WEATHER_PLACE_LIMIT = 6;
+/* 拉多少条回来。要比显示的多 —— 因为要先按人口筛掉同名村子，拉少了筛完就没得选。
+   界面上最多显示 WEATHER_PLACE_SHOW 条，多了设置面板会被撑长。 */
+const WEATHER_PLACE_LIMIT = 10;
+const WEATHER_PLACE_SHOW  = 6;
 
 const WEATHER_LOCATION_KEY = 'weatherLocation';
 const WEATHER_CACHE_KEY    = 'weatherCache';
@@ -2541,6 +2544,28 @@ function weatherLangCode() {
   return String(localeOf() || 'zh').split('-')[0];
 }
 
+/**
+ * formatPopulation(pop) — 把人口数排成一行短字
+ *
+ * 用在哪儿：城市搜索结果里。同名地名太多了（光叫「上海」的全国就有好几个），
+ * 真正能分辨「这是大城市还是村子」的只有人口 ——「云南 · 中国」你看不出是什么，
+ * 「云南 · 中国 · 1.4 万人」一眼就知道不是你要的那个。
+ *
+ * 两端单位不同（中文习惯「万」，英文习惯 M / k），所以实际用哪个词目跟着语言走。
+ * 小于 1000 的不显示 —— 那多半是个村子，显示「738 人」没有信息量。
+ */
+function formatPopulation(pop) {
+  if (typeof pop !== 'number' || !Number.isFinite(pop) || pop < 1000) return '';
+  if (weatherLangCode() === 'zh') {
+    if (pop < 10000) return T('weather.pop.people', { n: Math.round(pop) });
+    const wan = pop / 10000;
+    const n = (wan >= 100) ? Math.round(wan) : Math.round(wan * 10) / 10;
+    return T('weather.pop.wan', { n });
+  }
+  if (pop >= 1e6) return T('weather.pop.million', { n: Math.round(pop / 1e5) / 10 });
+  return T('weather.pop.k', { n: Math.round(pop / 1000) });
+}
+
 /** 温度：取整 + 套模板。不是数字就返回空串（宁可空着，也不要显示 "NaN°"） */
 function formatTemperature(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
@@ -2559,7 +2584,8 @@ function formatWeatherRange(min, max) {
  *
  * 地理编码接口对「上海」会同时给 name='上海'、admin1='上海市'、country='中国'。
  * 直接拼就成了「上海 · 上海市 · 中国」，前两个根本是一回事。
- * 所以 admin1 以 name 开头的就丢掉，只留真正有信息量的部分（省份 / 国家）。
+ * 所以 admin1 以 name 开头的就丢掉，只留真正有信息量的部分（省份 / 国家 / 人口）。
+ * 人口放最后：它是「这是不是你要的那个城市」最直接的证据。
  */
 function placeSubtitle(place) {
   const name    = String((place && place.name)    || '');
@@ -2568,6 +2594,8 @@ function placeSubtitle(place) {
   const parts   = [];
   if (admin1 && !admin1.startsWith(name)) parts.push(admin1);
   if (country && !parts.includes(country)) parts.push(country);
+  const pop = formatPopulation(place && place.population);
+  if (pop) parts.push(pop);
   return parts.join(' · ');
 }
 
@@ -2684,16 +2712,44 @@ async function searchPlaces(query) {
   if (!json) return null;   // 拿不到 ≠ 没找到
 
   const list = Array.isArray(json.results) ? json.results : [];
-  return list
+  return narrowPlaces(list);
+}
+
+/**
+ * narrowPlaces(list) — 把接口给的原始地名收拾成人能选的样子
+ *
+ * 单独抽成纯函数（不碰网络）有两个原因：一是这段刷选是整个功能里逻辑最实的一段，
+ * 值得有自己的测试；二是静态预览页要用同一份逻辑造假数据，不然预览里画的
+ * 又是另一套写法，迟早走岔。
+ *
+ * ⚠️ 接口会把**全国所有同名的地方**都列出来。搜「上海」会带回云南、浙江、
+ *    四川那些村子（实测：7 条里只有 1 条有人口数据，其余连人口字段都没有），
+ *    而且互相根本没法分辨 ——「上海 · 云南 · 中国」和「上海 · 四川 · 中国」
+ *    对选天气城市的人来说没有任何区别。
+ *    人口是唯一可靠的分辨器：
+ *      · 按人口从大到小排 —— 最可能是你要的那个排在最上面
+ *      · 只要有一条有人口，就把没人口的全部丢掉（都是村子，列出来也没法选）
+ *      · 一条有人口的都没有，就把全部照常列出（那种情况没得筛）
+ *    注意这不是把结果「变少」这么简单：不筛的话，用户面对一排长得一样的
+ *    候选只能瞎猜，等于这个搜索没做完。
+ */
+function narrowPlaces(list) {
+  const places = (Array.isArray(list) ? list : [])
     .filter(r => r && typeof r.latitude === 'number' && typeof r.longitude === 'number')
     .map(r => ({
-      name:      String(r.name || ''),
-      latitude:  r.latitude,
-      longitude: r.longitude,
-      admin1:    String(r.admin1  || ''),
-      country:   String(r.country || ''),
+      name:       String(r.name || ''),
+      latitude:   r.latitude,
+      longitude:  r.longitude,
+      admin1:     String(r.admin1  || ''),
+      country:    String(r.country || ''),
+      // 没有人口字段的一律记 0 —— 这个字段是「大城市还是村子」的唯一分辨器
+      population: (typeof r.population === 'number' && Number.isFinite(r.population)) ? r.population : 0,
     }))
     .filter(p => p.name);
+
+  places.sort((a, b) => b.population - a.population);
+  const withPeople = places.filter(p => p.population > 0);
+  return (withPeople.length ? withPeople : places).slice(0, WEATHER_PLACE_SHOW);
 }
 
 async function getWeatherLocation() {

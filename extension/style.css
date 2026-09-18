@@ -371,9 +371,18 @@ header {
   border-color: var(--accent-sage);
 }
 
+.weather-result-name {
+  flex-shrink: 0;          /* 城市名不许被挤 —— 挤没了就不知道点的是哪个 */
+}
+
+/* 副标题（省份 · 国家 · 人口）可能很长，让它缩、超了打省略号，
+   别把整行撑出去。 */
 .weather-result-sub {
   font-size: 12px;
   color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .weather-result-hint {

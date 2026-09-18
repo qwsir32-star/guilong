@@ -44,11 +44,12 @@ const code = fs.readFileSync(APP, 'utf8') + `
   getUiPrefs, setUiPref, applyUiPrefs, looksLikeUrl, runSearch, focusSearchBox,
   formatShortcut, formatShortcutParts, COMMAND_NAME, SHORTCUTS_URL,
   weatherText, weatherIcon, formatTemperature, formatWeatherRange, placeSubtitle,
-  weatherCityLabel, weatherShouldShow, isWeatherCacheFresh, weatherLangCode,
-  fetchWeather, searchPlaces, runPlaceSearch, renderWeather,
+  formatPopulation, weatherCityLabel, weatherShouldShow, isWeatherCacheFresh, weatherLangCode,
+  fetchWeather, searchPlaces, narrowPlaces, runPlaceSearch, renderWeather,
   getWeatherLocation, setWeatherLocation, getWeatherCache, paintWeather,
   applyWeatherVisibility,
   WEATHER_CODE_KINDS, WEATHER_KINDS, WEATHER_ICONS, WEATHER_TTL_MS,
+  WEATHER_PLACE_LIMIT, WEATHER_PLACE_SHOW,
   WEATHER_LOCATION_KEY, WEATHER_CACHE_KEY, DEFAULT_WEATHER_LOCATION,
   WEATHER_API_HOST, WEATHER_GEOCODE_HOST,
   getLastPlaceResults: () => lastPlaceResults,
@@ -1194,16 +1195,36 @@ async function part11() {
   check('缺最低就整条不显示', T.formatWeatherRange(undefined, 31.9), '');
 
   /* ---- 搜索结果里那行小字 ---- */
-  check('上海：admin1 和名字重复就去掉',
-    T.placeSubtitle({ name: '上海', admin1: '上海市', country: '中国' }), '中国');
+  check('上海：admin1 和名字重复就去掉，带上人口',
+    T.placeSubtitle({ name: '上海', admin1: '上海市', country: '中国', population: 24874500 }),
+    '中国 · 2487 万人');
   check('深圳：省份留着',
-    T.placeSubtitle({ name: '深圳', admin1: '广东省', country: '中国' }), '广东省 · 中国');
+    T.placeSubtitle({ name: '深圳', admin1: '广东省', country: '中国', population: 17560000 }),
+    '广东省 · 中国 · 1756 万人');
+  check('人口 1.4 万这种小数位要保留（四舍五入成「1 万人」就错了）',
+    T.formatPopulation(13524), '1.4 万人');
   check('境外城市',
-    T.placeSubtitle({ name: 'London', admin1: 'England', country: 'United Kingdom' }),
-    'England · United Kingdom');
-  check('只剩国家', T.placeSubtitle({ name: 'X', country: '日本' }), '日本');
+    T.placeSubtitle({ name: 'London', admin1: 'England', country: 'United Kingdom', population: 8900000 }),
+    'England · United Kingdom · 890 万人');
+  check('只有国家', T.placeSubtitle({ name: 'X', country: '日本' }), '日本');
   check('什么都没有 → 空串，不留一个孤零零的分隔点', T.placeSubtitle({}), '');
   check('null 也不炸', T.placeSubtitle(null), '');
+
+  /* ---- 人口格式化：这是同名地名唯一的分辨器 ---- */
+  check('2487 万这种整数不带小数点', T.formatPopulation(24874500), '2487 万人');
+  check('14.6 万保留一位小数',       T.formatPopulation(145674),   '14.6 万人');
+  check('刚过一万的',               T.formatPopulation(10000),    '1 万人');
+  check('不到一万的按「人」数',      T.formatPopulation(8000),     '8000 人');
+  check('不足 1000 不显示（显示「738 人」没有信息量）', T.formatPopulation(738), '');
+  check('undefined / NaN / 字符串都不显示',
+    [T.formatPopulation(undefined), T.formatPopulation(NaN), T.formatPopulation('24874500')], ['', '', '']);
+  S.setLang('en');
+  check('英文界面用 M', T.formatPopulation(24874500), '24.9M');
+  check('英文界面用 k', T.formatPopulation(145674),   '146k');
+  S.setLang('zh');
+  check('人口用词中英文都在表里（PART 9 会查词目齐不齐，这里确认真的用得上）',
+    ['weather.pop.wan', 'weather.pop.people', 'weather.pop.million', 'weather.pop.k']
+      .filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
 
   /* ---- 界面上显示的城市名 ---- */
   check('选了城市就用它',       T.weatherCityLabel({ name: '北京' }), '北京');
@@ -1287,19 +1308,37 @@ async function part11() {
     [noDaily.temperature, noDaily.tempMin, noDaily.tempMax], [20, null, null]);
 
   /* ---- 找城市：三种结果必须分得开 ---- */
+  /* 顺序故意把「有人口的正经城市」放在**第二**条 —— 这样按人口排序这道工序
+     一旦被删掉，found[0] 就会是前面的村子，断言立刻变红。 */
   const geoBody = { results: [
-    { name: '上海', latitude: 31.22, longitude: 121.46, admin1: '上海市', country: '中国' },
-    { name: '上海', latitude: 29.33, longitude: 121.06, admin1: '浙江',   country: '中国' },
-    { name: '没有坐标的', admin1: '某地' },
+    { name: '上海', latitude: 29.33, longitude: 121.06, admin1: '浙江', country: '中国' },
+    { name: '上海', latitude: 31.22, longitude: 121.46, admin1: '上海市', country: '中国', population: 24874500 },
+    { name: '上海', latitude: 27.07, longitude: 100.11, admin1: '云南', country: '中国', population: 900 },
+    { name: '没有坐标的', admin1: '某地', population: 5000 },
   ] };
 
   fetchCalls = [];
   fetchImpl = async () => jsonResponse(geoBody);
   const found = await T.searchPlaces('上海');
-  check('找到 → 丢掉没有坐标的条目，其余带回来', found.length, 2);
-  check('  第一条是对的', [found[0].name, found[0].latitude], ['上海', 31.22]);
+  /* 同名村子被丢掉 + 没坐标的被丢掉 + 按人口从大到小排。
+     这三条缺一不可：不筛的话用户面对一排长得一样的「上海 · 某省 · 中国」只能瞎猜，
+     不排的话真正要的那个城市可能排在第二页。 */
+  check('同名村子被丢掉，只留有人口的（实测：搜上海 7 条里 6 条没人口）', found.length, 2);
+  check('  排在最前面的是人口最多的那个', found[0].population, 24874500);
+  check('  人口字段被带回来（副标题要显示它）', [found[0].name, found[1].population], ['上海', 900]);
+  check('  请求要多拉几条（拉少了筛完就没得选）',
+    fetchCalls[0].url.includes('count=' + T.WEATHER_PLACE_LIMIT)
+      && T.WEATHER_PLACE_LIMIT >= T.WEATHER_PLACE_SHOW, true);
   check('  请求带了语言', fetchCalls[0].url.includes('language=zh'), true);
   check('  中文地名做了 URL 编码', /name=%E4%B8%8A%E6%B5%B7/.test(fetchCalls[0].url), true);
+
+  // 全都没人口数据时，一条都不能丢 —— 那种情况没得筛，丢光了用户就没得选了
+  fetchImpl = async () => jsonResponse({ results: [
+    { name: '甲村', latitude: 1, longitude: 2, admin1: '某省', country: '中国' },
+    { name: '乙村', latitude: 3, longitude: 4, admin1: '某省', country: '中国' },
+  ] });
+  const allVillages = await T.searchPlaces('某某');
+  check('全都没人口 → 照常全部列出（不许筛成空）', allVillages.length, 2);
 
   // 真接口搜不到时就是 HTTP 200 + 一个只有 generationtime_ms 的 JSON（实测过）
   fetchImpl = async () => jsonResponse({ generationtime_ms: 0.09 });
@@ -1318,6 +1357,24 @@ async function part11() {
   await T.searchPlaces('shanghai');
   check('切英文后地理编码语言也跟着变', fetchCalls[0].url.includes('language=en'), true);
   S.setLang('zh');
+
+  /* ---- 收拾候选名单这件事单独再直接打一遍（不经过网络） ----
+     searchPlaces 那几条是走假 fetch 的，能验端到端；这里验的是入口处的脏数据。 */
+  check('给 null 进来不炸（接口字段缺失时会这样）', T.narrowPlaces(null), []);
+  check('给个对象进来也不炸', T.narrowPlaces({ results: [] }), []);
+  const many = [];
+  for (let i = 0; i < T.WEATHER_PLACE_SHOW + 6; i++) {
+    many.push({ name: '城' + i, latitude: i, longitude: i, country: '中国', population: 1000 * i });
+  }
+  const capped = T.narrowPlaces(many);
+  check('候选再多也只显示 SHOWN 条（多了面板会被撑长）', capped.length, T.WEATHER_PLACE_SHOW);
+  check('  留下的是人口最多的那几条（按人口从大到小排）',
+    capped[0].population > capped[1].population, true);
+  check('  条目里的 null / 没名字的都被甩掉',
+    T.narrowPlaces([null, {}, { name: '', latitude: 1, longitude: 2 },
+                    { name: '甲城', latitude: 3, longitude: 4 }]).length, 1);
+  check('  人口字段缺失统一记成 0（后面全靠它分辨大城市和村子）',
+    T.narrowPlaces([{ name: '乙村', latitude: 1, longitude: 2 }])[0].population, 0);
 
   /* ---- 结果列表渲染 ----
      null / [] 必须在界面上翻成**不同**的两句话：一个让人换关键词，
