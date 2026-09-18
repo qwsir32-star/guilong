@@ -30,6 +30,7 @@
  *   PART 16 README 结构（目录锚点不许死链 / 仓库内链接真实存在 / 许可证压轴）
  *   PART 17 界面语言（中英切换 / 默认跟随系统 / 标题走文案表）
  *   PART 18 设置面板是居中悬浮的模态（<dialog> + showModal + 背板虚化）
+ *   PART 19 index.html 里不许写死界面文案（补上 PART 9 只扫 app.js 的缺口）
  */
 const fs = require('fs');
 const path = require('path');
@@ -2549,6 +2550,47 @@ function part18() {
     /e\.target !== panel/.test(wireBlock), true);
 }
 
+/* =================================================================
+   PART 19 — index.html 里也不许写死界面文案
+
+   2026-09-19 用全新 profile 跑 Chrome（系统语言 en-US）时发现的：页脚那条
+   指向仓库的链接文字是**硬编码的「归拢」**，没走文案表 —— 切英文之后
+   document.title 变成了 Guilong，页脚却还写着「归拢」。
+
+   ⚠️ 这个缺口本来就在：PART 9 那条「没有绕开文案表写死的中文文案」**只扫了
+   app.js**。index.html 这一侧从来没被扫过，所以才漏。
+   补上对称的一条，把整类漏法堵住。
+
+   判据：剥掉 HTML 注释和 `<title>` 之后，index.html 里不该再出现汉字。
+     · 注释要剥 —— 本项目注释里到处是中文说明（「为什么自托管」那一大段），
+       不剥的话守卫从第一天就是红的。
+     · `<title>` 要放过 —— 它是 JS 跑起来之前那一瞬间的静态默认值，必须写死
+       在 HTML 里；applyStaticStrings() 随后会按语言覆盖它。
+   ================================================================= */
+function part19() {
+  console.log('\n[PART 19] index.html 里不许写死界面文案');
+
+  const HTML_SRC = srcOf('index.html');
+
+  const noComments = HTML_SRC.replace(/<!--[\s\S]*?-->/g, '');
+  const noTitle    = noComments.replace(/<title>[\s\S]*?<\/title>/g, '');
+
+  // 前后各留一点上下文，红了能直接看出是哪句
+  const stray = (noTitle.match(/[\u4e00-\u9fff][^\n<]{0,40}/g) || [])
+    .map(s => s.trim().slice(0, 50));
+  check('剥掉注释与 <title> 后，HTML 里没有写死的汉字（文案要走 data-i18n）',
+    stray, []);
+
+  // 页脚那条品牌链接：文字必须来自文案表，链接本身还要在
+  check('页脚的品牌链接走文案表',
+    /data-i18n="footer\.brand"/.test(HTML_SRC), true);
+  check('  而且它仍然是指向仓库的链接（别顺手把 <a> 删了）',
+    /<a[^>]*href="https:\/\/github\.com\/qwsir32-star\/guilong"[^>]*data-i18n="footer\.brand"/.test(HTML_SRC),
+    true);
+  check('  中英两份表里都有 footer.brand',
+    ['footer.brand' in S.STRINGS.zh, 'footer.brand' in S.STRINGS.en], [true, true]);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -2569,6 +2611,7 @@ function part18() {
   part16();
   part17();
   part18();
+  part19();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

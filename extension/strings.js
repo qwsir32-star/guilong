@@ -172,6 +172,10 @@ const STRINGS = {
 
     /* ---- 标签页标题（<title>，见 applyStaticStrings）---- */
     'doc.title':              '归拢',
+    // 页脚那条指向仓库的链接文字。单独一个词目（不和 doc.title 共用）：
+    // 两者是不同版面，将来改其一（比如把标签页标题写成「归拢 · 新标签页」）
+    // 不该顺手把页脚的字也带走。
+    'footer.brand':           '归拢',
 
     /* ---- 主题 ----
        主题名是界面上的选项名，走表；主题的配色在 style.css 里。 */
@@ -374,6 +378,7 @@ const STRINGS = {
     'lang.en':                'English',
 
     'doc.title':              'Guilong',
+    'footer.brand':           'Guilong',
 
     'settings.theme.name':   'Theme',
     'settings.theme.desc':   'Change the colour scheme. "Follow system" tracks your computer’s light/dark setting.',

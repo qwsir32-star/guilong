@@ -23,10 +23,32 @@ const ROOT = path.join(__dirname, '..');
 const EXT  = path.join(ROOT, 'extension');
 const DIST = path.join(ROOT, 'dist');
 
-/* 永远不进包的文件：
-   - config.local.js 是个人的落地页规则，本来就在 .gitignore 里
+/* 从源码目录里**不往包里拷**的文件：
+   - config.local.js 是个人的落地页规则，本来就在 .gitignore 里。
+     ⚠️ 注意这不是「包里没有这个文件」—— 见下面的 LOCAL_CONFIG_STUB。
    - .DS_Store 是 macOS 的垃圾，混进包里 AMO 会报「包里有奇怪的东西」 */
 const EXCLUDE = new Set(['config.local.js', '.DS_Store', 'Icon\r']);
+
+/* index.html 里有一条**无条件**的 <script src="config.local.js">，所以包里必须有
+   一个同名文件。少了它不算「干净」—— 那是**每一个新装的用户**打开第一个新标签页
+   就在控制台看到一条 ERR_FILE_NOT_FOUND（CWS / AMO 审核都会开 DevTools）。
+   （2026-09-19 用全新 profile 跑 Chrome 时发现的，六种组合里六次全中。）
+
+   用户装的是商店包，改不到包里的文件，所以这份**故意留空**。空文件是安全的：
+   app.js 用 `typeof LOCAL_XXX !== 'undefined'` 取配置，取不到就走内置规则。
+   真正带规则的那份只存在于源码目录（已 gitignore），永远不会被打进来。 */
+const LOCAL_CONFIG_STUB = `/*
+ * config.local.js —— 故意留空
+ *
+ * 这是给你自己加「个性化规则」的地方（改某个站点的落地页判定、把几个站点
+ * 合成一张卡）。在**源码目录**里建这个文件、改完重新加载扩展就生效；
+ * 它已在 .gitignore 里，不会被提交。字段见 docs/工程笔记.md。
+ *
+ * 商店包里这一份是空的：index.html 无条件引用了它，漏掉的话每个新装的用户
+ * 打开第一个新标签页都会在控制台看到一条 ERR_FILE_NOT_FOUND。
+ * 空文件是安全的 —— app.js 取不到 LOCAL_XXX 就走内置规则。
+ */
+`;
 
 /* ─── Firefox 的三处硬性要求 ──────────────────────────────────────────────
    ID 必须一次定好：首次签名后 AMO 就认这个了，改起来很麻烦。
@@ -146,6 +168,12 @@ function stage(target, manifest) {
     JSON.stringify(manifest, null, 2) + '\n'
   );
 
+  // 补上那份「故意留空」的个人配置 —— 见 LOCAL_CONFIG_STUB 的说明。
+  // 放在覆盖式写入里（不是 copyFileSync），所以源码目录里那份带规则的文件
+  // 就算因为 EXCLUDE 改错被拷进来，也会在这里被空文件盖掉。
+  expected.add('config.local.js');
+  fs.writeFileSync(path.join(dir, 'config.local.js'), LOCAL_CONFIG_STUB);
+
   // 多出来的（上次留下、这次源里已经没有的）会说清楚是哪个，不替人删
   const extra = fs.readdirSync(dir).filter(n => !expected.has(n));
   if (extra.length) {
@@ -202,8 +230,17 @@ function assertCommon(target, m, dir) {
 
   // 垃圾文件
   check('包里没有 .DS_Store', !fs.existsSync(path.join(dir, '.DS_Store')));
-  check('包里没有 config.local.js（那是个人配置，不外发）',
-    !fs.existsSync(path.join(dir, 'config.local.js')));
+
+  /* config.local.js：包里那份必须**在**，而且必须是**空壳**。两条是一对 ——
+     缺任何一条都对应一个具体的坏结果：
+       · 不在   → 每个新装的用户控制台一条 ERR_FILE_NOT_FOUND（首屏就报）
+       · 不空壳 → 把开发者自己那份个人规则发出去了（里面可能是私人站点） */
+  const localCfg = path.join(dir, 'config.local.js');
+  check('包里有 config.local.js（index.html 无条件引用它，缺了首装就 404）',
+    fs.existsSync(localCfg));
+  check('  而且是个空壳，没夹带个人规则',
+    fs.existsSync(localCfg) &&
+    fs.readFileSync(localCfg, 'utf8') === LOCAL_CONFIG_STUB);
 }
 
 function assertChromium(m) {
@@ -250,7 +287,12 @@ function assertZip(zipPath) {
   check('manifest.json 在包的根目录（套一层子目录就装不上）',
     out.includes('manifest.json'), out.slice(0, 6).join(' | '));
   check('包里没有 .DS_Store', !out.some(f => f.includes('.DS_Store')));
-  check('包里没有 config.local.js', !out.some(f => f.includes('config.local.js')));
+  check('config.local.js 打进去了', out.includes('config.local.js'));
+  // 解出来再比一次：防的是「目录里写对了、zip 里却是旧的」——
+  // 打包脚本带 -FS 就地同步，但这条断言把它钉死，不靠对 zip 参数的信任
+  check('  而且从 zip 里解出来也是空壳',
+    out.includes('config.local.js') &&
+    execFileSync('unzip', ['-p', zipPath, 'config.local.js']).toString() === LOCAL_CONFIG_STUB);
   check('字体也打进去了', out.filter(f => f.startsWith('fonts/')).length >= 7, true);
   return out.length;
 }
