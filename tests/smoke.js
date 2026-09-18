@@ -1043,6 +1043,10 @@ function part9() {
     "'just now'", "'Homepages'", "'No results'", "'Dismiss'", "'Save for later'",
     "'Close this tab'", "'Open tabs'", "'Saved for later'", "'Close extras'",
     "'Tab Out tabs open'", "' mins ago'", "' days ago'",
+    /* 空状态三件套（2026-09-18）：关掉所有卡片后的「Inbox zero」那屏。
+       前两句原来写在模板字符串里、不带引号 —— 裸串照样能匹配到带引号的写法，
+       所以这里故意不加引号，一种条目兜两种写法。 */
+    "'0 domains'", 'Inbox zero, but for tabs.', "You're free.",
   ];
   check('没有重新写死的英文界面文案',
     BANNED.filter(b => codeOnly.includes(b) || HTML_SRC.includes(b)), []);

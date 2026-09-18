@@ -143,6 +143,10 @@ const STRINGS = {
     'badge.domains':           '{n} 个站点',
     'badge.tabsUnit':          '个',
 
+    /* ---- 打开的标签页：卡片全关掉之后的空状态 ---- */
+    'openTabs.emptyTitle':     '标签页也清零了。',
+    'openTabs.emptySubtitle':  '轻松了。',
+
     /* ---- 卡片上的动作按钮 ----
        「关闭全部 N 个」在卡片和顶部批量栏两处用同一条词目：
        两处的说法本来就该一致，拆成两条只会让以后改文案时漏掉一处。 */
@@ -327,6 +331,10 @@ const STRINGS = {
     'badge.domain':            '{n} domain',
     'badge.domains':           '{n} domains',
     'badge.tabsUnit':          'tabs',
+
+    /* ---- Empty state after the last tab card is closed ---- */
+    'openTabs.emptyTitle':     "Inbox zero, but for tabs.",
+    'openTabs.emptySubtitle':  "You're free.",
 
     'action.closeAllTabsOne':  'Close this 1 tab',
     'action.closeAllTabs':     'Close all {n} tabs',
