@@ -2439,16 +2439,18 @@ document.addEventListener('visibilitychange', () => {
    看到的只是「这里没有天气」，而不是一个他看不懂也修不了的红条。
    ---------------------------------------------------------------- */
 
-const WEATHER_API_HOST     = 'https://api.open-meteo.com';
-const WEATHER_GEOCODE_HOST = 'https://geocoding-api.open-meteo.com';
+const WEATHER_API_HOST = 'https://api.open-meteo.com';
+/* ⚠️ 没有第二个域名了。曾经用过的 geocoding-api.open-meteo.com 对中国地名
+   基本不可用：实测搜「青岛」返回 3 条（辽宁的青岛村 + 两个无人岛），真正的
+   青岛市根本不在结果里；搜「大连」5 条全是村子。**正确答案不在数据里，
+   任何筛选规则都救不了。** 所以城市搜索改走本地城市库（china-places.js，
+   只收省/市两级行政区划），离线完成，一次网络都不打。 */
 
 // 超过这个时长就回源刷新。缓存本身**永不主动删**：过期只是让它重新拉一次，
 // 拉不到就继续用这份旧的，总比空着强。
 const WEATHER_TTL_MS      = 20 * 60 * 1000;
 const WEATHER_TIMEOUT_MS  = 8000;
-/* 拉多少条回来。要比显示的多 —— 因为要先按人口筛掉同名村子，拉少了筛完就没得选。
-   界面上最多显示 WEATHER_PLACE_SHOW 条，多了设置面板会被撑长。 */
-const WEATHER_PLACE_LIMIT = 10;
+// 搜索结果最多显示这么多条 —— 多了设置面板会被撑长
 const WEATHER_PLACE_SHOW  = 6;
 
 const WEATHER_LOCATION_KEY = 'weatherLocation';
@@ -2539,33 +2541,6 @@ function weatherIcon(code) {
   return WEATHER_ICONS[(def && def.icon) || 'cloud'] || WEATHER_ICONS.cloud;
 }
 
-/** 地理编码接口认 zh / en 这种两字母码，从界面语言推出来 */
-function weatherLangCode() {
-  return String(localeOf() || 'zh').split('-')[0];
-}
-
-/**
- * formatPopulation(pop) — 把人口数排成一行短字
- *
- * 用在哪儿：城市搜索结果里。同名地名太多了（光叫「上海」的全国就有好几个），
- * 真正能分辨「这是大城市还是村子」的只有人口 ——「云南 · 中国」你看不出是什么，
- * 「云南 · 中国 · 1.4 万人」一眼就知道不是你要的那个。
- *
- * 两端单位不同（中文习惯「万」，英文习惯 M / k），所以实际用哪个词目跟着语言走。
- * 小于 1000 的不显示 —— 那多半是个村子，显示「738 人」没有信息量。
- */
-function formatPopulation(pop) {
-  if (typeof pop !== 'number' || !Number.isFinite(pop) || pop < 1000) return '';
-  if (weatherLangCode() === 'zh') {
-    if (pop < 10000) return T('weather.pop.people', { n: Math.round(pop) });
-    const wan = pop / 10000;
-    const n = (wan >= 100) ? Math.round(wan) : Math.round(wan * 10) / 10;
-    return T('weather.pop.wan', { n });
-  }
-  if (pop >= 1e6) return T('weather.pop.million', { n: Math.round(pop / 1e5) / 10 });
-  return T('weather.pop.k', { n: Math.round(pop / 1000) });
-}
-
 /** 温度：取整 + 套模板。不是数字就返回空串（宁可空着，也不要显示 "NaN°"） */
 function formatTemperature(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
@@ -2582,21 +2557,20 @@ function formatWeatherRange(min, max) {
 /**
  * placeSubtitle(place) — 搜索结果里那行小字
  *
- * 地理编码接口对「上海」会同时给 name='上海'、admin1='上海市'、country='中国'。
- * 直接拼就成了「上海 · 上海市 · 中国」，前两个根本是一回事。
- * 所以 admin1 以 name 开头的就丢掉，只留真正有信息量的部分（省份 / 国家 / 人口）。
- * 人口放最后：它是「这是不是你要的那个城市」最直接的证据。
+ * 城市库里每条都带着自己的一级行政区，直接显示就行：
+ *   城市   → 「山东省」        （青岛市 · 山东省）
+ *   区     → 「北京市」        （朝阳区 · 北京市）
+ *   省     → 「省会 · 济南市」  （选个省，天气按省会给 —— 这是人搜「山东」时最可能的意图）
+ *   直辖市 → 「直辖市」
+ *   特区   → 所属一级行政区名   （香港 · 香港特别行政区）
+ * 同名不再可能混淆：库里的每条都是正经行政区，不存在「同名的村」。
+ * 「省会」「直辖市」是界面文案，走 strings.js；省名是数据，不走。
  */
 function placeSubtitle(place) {
-  const name    = String((place && place.name)    || '');
-  const admin1  = String((place && place.admin1)  || '');
-  const country = String((place && place.country) || '');
-  const parts   = [];
-  if (admin1 && !admin1.startsWith(name)) parts.push(admin1);
-  if (country && !parts.includes(country)) parts.push(country);
-  const pop = formatPopulation(place && place.population);
-  if (pop) parts.push(pop);
-  return parts.join(' · ');
+  if (!place) return '';
+  if (place.capital)     return T('weather.capital', { city: place.capital });
+  if (place.kind === 'municipality') return T('weather.municipality');
+  return String(place.province || '');
 }
 
 /** 界面上显示的城市名。没选过就用默认那个，名字从文案表取 */
@@ -2688,68 +2662,44 @@ async function fetchWeather(loc) {
 }
 
 /**
- * searchPlaces(query) — 按名字找城市
+ * searchLocalPlaces(query) — 在本地城市库里找城市
  *
- * 返回值把三件事分得很清楚，调用方要据此给不同的提示：
- *   null  → 请求本身没成（断网 / 超时 / 接口挂了）
- *   []    → 请求成了，但没这个地名
- *   [...]  → 找到了
- * 合并成 `[]` 是不行的：那两句话该说的东西完全不同 ——
- * 一个让人换关键词，一个让人查网络。
+ * 为什么不用任何接口：Open-Meteo 的地理编码对中国地名不可用（详见上面
+ * WEATHER_API_HOST 旁边的注释）。本地库只收**省 / 市两级**正经行政区划
+ * （china-places.js，生成脚本在 tools/），所以：
+ *   · 搜「青岛」只会出青岛市 —— 库里根本没有「青岛村」这种东西
+ *   · 搜「朝阳」出两个，但两个都是真的：朝阳区 · 北京市 / 朝阳市 · 辽宁省
+ *   · 搜索离线完成，不打网络、不会超时、没有「搜不动」这种失败
+ * 也因此这个函数的返回值只有两种：[]（库里没有，换个写法）/ [...]（找到了）。
+ * 没有 null —— 本地查找不存在「请求没成」。
  *
- * language 跟着界面语言走：中文界面搜「上海」拿回「上海」，英文界面
- * 搜 shanghai 拿回 Shanghai。**城市名是接口数据，不进 strings.js** ——
- * 判断标准还是那句：换语言时它该不该变？该变，而且它会自己变。
+ * 排序：名字以关键词开头的排前面，同样开头时短名排前面。
+ * 然后按 WEATHER_PLACE_SHOW 截断。
  */
-async function searchPlaces(query) {
+function searchLocalPlaces(query) {
   const q = String(query == null ? '' : query).trim();
   if (!q) return [];
 
-  const url = `${WEATHER_GEOCODE_HOST}/v1/search?name=${encodeURIComponent(q)}`
-    + `&count=${WEATHER_PLACE_LIMIT}&language=${weatherLangCode()}&format=json`;
+  const hits = CHINA_PLACES
+    .filter(e => e && typeof e.n === 'string' && e.n.includes(q)
+              && Number.isFinite(e.la) && Number.isFinite(e.lo))
+    .map(e => ({
+      name:       e.n,
+      latitude:   e.la,
+      longitude:  e.lo,
+      province:   String(e.p   || ''),
+      kind:       String(e.k   || ''),
+      capital:    String(e.cap || ''),
+    }));
 
-  const json = await fetchJson(url);
-  if (!json) return null;   // 拿不到 ≠ 没找到
+  hits.sort((a, b) => {
+    const aHead = a.name.startsWith(q) ? 0 : 1;
+    const bHead = b.name.startsWith(q) ? 0 : 1;
+    if (aHead !== bHead) return aHead - bHead;
+    return a.name.length - b.name.length;
+  });
 
-  const list = Array.isArray(json.results) ? json.results : [];
-  return narrowPlaces(list);
-}
-
-/**
- * narrowPlaces(list) — 把接口给的原始地名收拾成人能选的样子
- *
- * 单独抽成纯函数（不碰网络）有两个原因：一是这段刷选是整个功能里逻辑最实的一段，
- * 值得有自己的测试；二是静态预览页要用同一份逻辑造假数据，不然预览里画的
- * 又是另一套写法，迟早走岔。
- *
- * ⚠️ 接口会把**全国所有同名的地方**都列出来。搜「上海」会带回云南、浙江、
- *    四川那些村子（实测：7 条里只有 1 条有人口数据，其余连人口字段都没有），
- *    而且互相根本没法分辨 ——「上海 · 云南 · 中国」和「上海 · 四川 · 中国」
- *    对选天气城市的人来说没有任何区别。
- *    人口是唯一可靠的分辨器：
- *      · 按人口从大到小排 —— 最可能是你要的那个排在最上面
- *      · 只要有一条有人口，就把没人口的全部丢掉（都是村子，列出来也没法选）
- *      · 一条有人口的都没有，就把全部照常列出（那种情况没得筛）
- *    注意这不是把结果「变少」这么简单：不筛的话，用户面对一排长得一样的
- *    候选只能瞎猜，等于这个搜索没做完。
- */
-function narrowPlaces(list) {
-  const places = (Array.isArray(list) ? list : [])
-    .filter(r => r && typeof r.latitude === 'number' && typeof r.longitude === 'number')
-    .map(r => ({
-      name:       String(r.name || ''),
-      latitude:   r.latitude,
-      longitude:  r.longitude,
-      admin1:     String(r.admin1  || ''),
-      country:    String(r.country || ''),
-      // 没有人口字段的一律记 0 —— 这个字段是「大城市还是村子」的唯一分辨器
-      population: (typeof r.population === 'number' && Number.isFinite(r.population)) ? r.population : 0,
-    }))
-    .filter(p => p.name);
-
-  places.sort((a, b) => b.population - a.population);
-  const withPeople = places.filter(p => p.population > 0);
-  return (withPeople.length ? withPeople : places).slice(0, WEATHER_PLACE_SHOW);
+  return hits.slice(0, WEATHER_PLACE_SHOW);
 }
 
 async function getWeatherLocation() {
@@ -2898,11 +2848,11 @@ function showWeatherHint(key) {
 }
 
 /**
- * runPlaceSearch() — 拿输入框里的字去搜城市
+ * runPlaceSearch() — 拿输入框里的字去本地库里找城市
  *
- * 「搜不动」和「没找到」给的是**不同**的提示，因为用户要采取的行动不同：
- * 一个是换个关键词，一个是去查网络。searchPlaces 用 null / [] 把这两件事
- * 分开了，这里照着翻译成提示条。
+ * 本地查找是同步的、也不可能「搜不动」—— 所以提示只剩一种：
+ * 库里没有 → 让人换个写法。（曾经有「检查一下网络」那一条，
+ * 是搜索还走接口的时候的事；现在那条路整个不存在了。）
  */
 async function runPlaceSearch() {
   const input = document.getElementById('weatherPlaceInput');
@@ -2911,18 +2861,15 @@ async function runPlaceSearch() {
   const q = input.value.trim();
   if (!q) { hideWeatherResults(); return; }
 
-  showWeatherHint('settings.weatherPlace.busy');
+  const results = searchLocalPlaces(q);
+  lastPlaceResults = results;
 
-  const results = await searchPlaces(q);
-  lastPlaceResults = results || [];
-
-  if (results === null)     { showWeatherHint('settings.weatherPlace.failed'); return; }
-  if (!results.length)      { showWeatherHint('settings.weatherPlace.empty');  return; }
+  if (!results.length) { showWeatherHint('settings.weatherPlace.empty'); return; }
 
   const box = document.getElementById('weatherResults');
   if (!box) return;
 
-  // 城市名来自外部接口，必须转义 —— 和 topSites 的标题是同一类东西
+  // 名字来自本地库，但「外部数据插 innerHTML 前必须转义」这条规矩不分来源
   box.innerHTML = lastPlaceResults.map((p, i) =>
     `<button type="button" class="weather-result" data-action="pick-weather-place" data-place-index="${i}">`
     + `<span class="weather-result-name">${escapeAttr(p.name)}</span>`

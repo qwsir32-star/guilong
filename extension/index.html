@@ -286,6 +286,10 @@
      静态文案靠 data-i18n 在启动时填充（见 applyStaticStrings）。 -->
 <script src="strings.js"></script>
 
+<!-- 天气城市库 —— 必须在 app.js 之前（searchLocalPlaces 要用）。
+     生成的数据文件，别手改：tools/make-china-places.js 重跑即可。 -->
+<script src="china-places.js"></script>
+
 <!-- Main dashboard logic — loads last so the DOM is ready -->
 <script src="app.js"></script>
 </body>

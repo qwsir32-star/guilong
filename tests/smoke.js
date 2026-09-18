@@ -44,14 +44,14 @@ const code = fs.readFileSync(APP, 'utf8') + `
   getUiPrefs, setUiPref, applyUiPrefs, looksLikeUrl, runSearch, focusSearchBox,
   formatShortcut, formatShortcutParts, COMMAND_NAME, SHORTCUTS_URL,
   weatherText, weatherIcon, formatTemperature, formatWeatherRange, placeSubtitle,
-  formatPopulation, weatherCityLabel, weatherShouldShow, isWeatherCacheFresh, weatherLangCode,
-  fetchWeather, searchPlaces, narrowPlaces, runPlaceSearch, renderWeather,
+  weatherCityLabel, weatherShouldShow, isWeatherCacheFresh,
+  fetchWeather, searchLocalPlaces, runPlaceSearch, renderWeather,
   getWeatherLocation, setWeatherLocation, getWeatherCache, paintWeather,
   applyWeatherVisibility,
   WEATHER_CODE_KINDS, WEATHER_KINDS, WEATHER_ICONS, WEATHER_TTL_MS,
-  WEATHER_PLACE_LIMIT, WEATHER_PLACE_SHOW,
+  WEATHER_PLACE_SHOW,
   WEATHER_LOCATION_KEY, WEATHER_CACHE_KEY, DEFAULT_WEATHER_LOCATION,
-  WEATHER_API_HOST, WEATHER_GEOCODE_HOST,
+  WEATHER_API_HOST,
   getLastPlaceResults: () => lastPlaceResults,
 };`;
 
@@ -253,6 +253,15 @@ vm.runInContext(
   ';globalThis.__s={STRINGS,T,Tn,setLang,localeOf,applyStaticStrings,LANG_LOCALES,getLang:()=>LANG};',
   sandbox);
 const S = sandbox.__s;
+
+/* china-places.js 也要先加载：searchLocalPlaces 直接读 CHINA_PLACES 这个全局常量，
+   跟 index.html 里 script 的先后顺序保持一致。加载后顺手把数据本身也暴露出来，
+   PART 11 要对它做完整性断言。 */
+vm.runInContext(
+  fs.readFileSync(path.join(EXT, 'china-places.js'), 'utf8')
+  + ';globalThis.__places=CHINA_PLACES;',
+  sandbox);
+const CHINA_PLACES = sandbox.__places;
 
 vm.runInContext(code, sandbox);
 const T = sandbox.__t;
@@ -1135,9 +1144,10 @@ function part10() {
 /* =================================================================
    PART 11 — 当地天气
 
-   天气是这套代码里**唯一会往外网伸手**的地方，所以这里真正要守的不是
-   「能不能拿到数据」，而是**拿不到的时候会怎样**：
+   天气分两半，各自有要守的东西：
 
+   一、拉数据（唯一会往外网伸手的地方）—— 真正要守的不是「能不能拿到」，
+     而是**拿不到的时候会怎样**：
      · 断网 / 被墙 / 超时 / 非 200 / 返回的不是 JSON / 形状不对
        → 必须全部归到同一个结果「这次没拿到」。任何一条漏到画布上，
          用户看到的就是一个 0° 或者 NaN° —— 那比什么都不显示更糟，
@@ -1145,6 +1155,14 @@ function part10() {
      · 缓存优先 → 新标签页一出现就有内容，不为了天气白等 8 秒超时。
      · 换城市 → 必须丢掉旧城市的缓存，否则会拿上海的 26° 配北京的名字，
          页面一切正常但是错的，而且不报任何错。
+
+   二、搜城市（**本地**库，不打网络）—— china-places.js 只收省/市两级正经
+     行政区划，所以「青岛村」这种东西在库里就不存在。要守的是：
+     · 数据完整性（生成脚本跑坏了不该悄悄带进仓库：条目数、坐标范围、
+       每个省有省会、香港澳门台湾没有下级）；
+     · 那几个被用户截图抓过的现场（青岛 / 大连 / 山东 / 朝阳 / 吉林）必须
+       永远给出干净的结果；
+     · 不许改回地理编码接口（#24：真正的青岛市都不在接口的返回里）。
 
    还有两条**结构 / 权限**守卫：天气条不许放进页头网格（见 PART 8），
    以及这个功能不许偷偷给自己加 host_permissions。
@@ -1195,36 +1213,21 @@ async function part11() {
   check('缺最低就整条不显示', T.formatWeatherRange(undefined, 31.9), '');
 
   /* ---- 搜索结果里那行小字 ---- */
-  check('上海：admin1 和名字重复就去掉，带上人口',
-    T.placeSubtitle({ name: '上海', admin1: '上海市', country: '中国', population: 24874500 }),
-    '中国 · 2487 万人');
-  check('深圳：省份留着',
-    T.placeSubtitle({ name: '深圳', admin1: '广东省', country: '中国', population: 17560000 }),
-    '广东省 · 中国 · 1756 万人');
-  check('人口 1.4 万这种小数位要保留（四舍五入成「1 万人」就错了）',
-    T.formatPopulation(13524), '1.4 万人');
-  check('境外城市',
-    T.placeSubtitle({ name: 'London', admin1: 'England', country: 'United Kingdom', population: 8900000 }),
-    'England · United Kingdom · 890 万人');
-  check('只有国家', T.placeSubtitle({ name: 'X', country: '日本' }), '日本');
+  check('城市 → 所属省份',
+    T.placeSubtitle({ name: '青岛市', province: '山东省', kind: 'city' }), '山东省');
+  check('直辖市的区 → 直辖市名',
+    T.placeSubtitle({ name: '朝阳区', province: '北京市', kind: 'district' }), '北京市');
+  check('省 → 省会（搜「山东」的人最可能想要的是省会的天气）',
+    T.placeSubtitle({ name: '山东省', kind: 'province', capital: '济南市' }), '省会 · 济南市');
+  check('直辖市 → 「直辖市」三个字',
+    T.placeSubtitle({ name: '上海市', kind: 'municipality' }), '直辖市');
+  check('特区 → 完整行政区名',
+    T.placeSubtitle({ name: '香港', province: '香港特别行政区', kind: 'special' }), '香港特别行政区');
   check('什么都没有 → 空串，不留一个孤零零的分隔点', T.placeSubtitle({}), '');
   check('null 也不炸', T.placeSubtitle(null), '');
-
-  /* ---- 人口格式化：这是同名地名唯一的分辨器 ---- */
-  check('2487 万这种整数不带小数点', T.formatPopulation(24874500), '2487 万人');
-  check('14.6 万保留一位小数',       T.formatPopulation(145674),   '14.6 万人');
-  check('刚过一万的',               T.formatPopulation(10000),    '1 万人');
-  check('不到一万的按「人」数',      T.formatPopulation(8000),     '8000 人');
-  check('不足 1000 不显示（显示「738 人」没有信息量）', T.formatPopulation(738), '');
-  check('undefined / NaN / 字符串都不显示',
-    [T.formatPopulation(undefined), T.formatPopulation(NaN), T.formatPopulation('24874500')], ['', '', '']);
-  S.setLang('en');
-  check('英文界面用 M', T.formatPopulation(24874500), '24.9M');
-  check('英文界面用 k', T.formatPopulation(145674),   '146k');
-  S.setLang('zh');
-  check('人口用词中英文都在表里（PART 9 会查词目齐不齐，这里确认真的用得上）',
-    ['weather.pop.wan', 'weather.pop.people', 'weather.pop.million', 'weather.pop.k']
-      .filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
+  check('「省会」「直辖市」是界面文案，走表',
+    [S.T('weather.capital', { city: '济南市' }), S.T('weather.municipality')],
+    ['省会 · 济南市', '直辖市']);
 
   /* ---- 界面上显示的城市名 ---- */
   check('选了城市就用它',       T.weatherCityLabel({ name: '北京' }), '北京');
@@ -1252,12 +1255,6 @@ async function part11() {
   check('时间戳在未来 → 当过期',    T.isWeatherCacheFresh({ at: NOW + 5000 }, NOW), false);
   check('没有缓存 → 过期',          T.isWeatherCacheFresh(null, NOW), false);
   check('缓存没有时间戳 → 过期',    T.isWeatherCacheFresh({ temperature: 20 }, NOW), false);
-
-  /* ---- 请求语言跟着界面走 ---- */
-  check('中文界面 → zh', T.weatherLangCode(), 'zh');
-  S.setLang('en');
-  check('英文界面 → en', T.weatherLangCode(), 'en');
-  S.setLang('zh');
 
   /* ---- 拉实况：响应映射 ---- */
   const SH = { latitude: 31.22222, longitude: 121.45806 };
@@ -1307,105 +1304,106 @@ async function part11() {
   check('只有实况、没有今日区间 → 温度照样给，区间留空（缺一半不该整条丢掉）',
     [noDaily.temperature, noDaily.tempMin, noDaily.tempMax], [20, null, null]);
 
-  /* ---- 找城市：三种结果必须分得开 ---- */
-  /* 顺序故意把「有人口的正经城市」放在**第二**条 —— 这样按人口排序这道工序
-     一旦被删掉，found[0] 就会是前面的村子，断言立刻变红。 */
-  const geoBody = { results: [
-    { name: '上海', latitude: 29.33, longitude: 121.06, admin1: '浙江', country: '中国' },
-    { name: '上海', latitude: 31.22, longitude: 121.46, admin1: '上海市', country: '中国', population: 24874500 },
-    { name: '上海', latitude: 27.07, longitude: 100.11, admin1: '云南', country: '中国', population: 900 },
-    { name: '没有坐标的', admin1: '某地', population: 5000 },
-  ] };
-
+  /* ---- 找城市：本地库（china-places.js），不打网络 ----
+     背景（#24）：Open-Meteo 的地理编码对中国地名不可用 —— 实测搜「青岛」返回
+     3 条（辽宁的青岛村 + 两个无人岛），真正的青岛市根本不在结果里；搜「大连」
+     5 条全是村子。正确答案不在数据里，筛选规则救不了。所以搜索改走本地库，
+     只收省 / 市两级正经行政区划 —— 库里**根本没有**「青岛村」这种东西。 */
   fetchCalls = [];
-  fetchImpl = async () => jsonResponse(geoBody);
-  const found = await T.searchPlaces('上海');
-  /* 同名村子被丢掉 + 没坐标的被丢掉 + 按人口从大到小排。
-     这三条缺一不可：不筛的话用户面对一排长得一样的「上海 · 某省 · 中国」只能瞎猜，
-     不排的话真正要的那个城市可能排在第二页。 */
-  check('同名村子被丢掉，只留有人口的（实测：搜上海 7 条里 6 条没人口）', found.length, 2);
-  check('  排在最前面的是人口最多的那个', found[0].population, 24874500);
-  check('  人口字段被带回来（副标题要显示它）', [found[0].name, found[1].population], ['上海', 900]);
-  check('  请求要多拉几条（拉少了筛完就没得选）',
-    fetchCalls[0].url.includes('count=' + T.WEATHER_PLACE_LIMIT)
-      && T.WEATHER_PLACE_LIMIT >= T.WEATHER_PLACE_SHOW, true);
-  check('  请求带了语言', fetchCalls[0].url.includes('language=zh'), true);
-  check('  中文地名做了 URL 编码', /name=%E4%B8%8A%E6%B5%B7/.test(fetchCalls[0].url), true);
+  fetchImpl = async () => { throw new Error('搜索不该打网络'); };
 
-  // 全都没人口数据时，一条都不能丢 —— 那种情况没得筛，丢光了用户就没得选了
-  fetchImpl = async () => jsonResponse({ results: [
-    { name: '甲村', latitude: 1, longitude: 2, admin1: '某省', country: '中国' },
-    { name: '乙村', latitude: 3, longitude: 4, admin1: '某省', country: '中国' },
-  ] });
-  const allVillages = await T.searchPlaces('某某');
-  check('全都没人口 → 照常全部列出（不许筛成空）', allVillages.length, 2);
+  check('搜「青岛」→ 只有青岛市（#24 的原始 bug 现场）',
+    T.searchLocalPlaces('青岛').map(p => p.name), ['青岛市']);
+  check('  它是山东的、坐标对得上',
+    (() => { const p = T.searchLocalPlaces('青岛')[0];
+      return [p.province, Math.round(p.latitude), Math.round(p.longitude)];
+    })(), ['山东省', 36, 120]);
+  check('搜「大连」→ 只有大连市（#24 第二个现场）',
+    T.searchLocalPlaces('大连').map(p => p.name), ['大连市']);
+  check('搜「山东」→ 山东省，坐标用省会济南的',
+    (() => { const p = T.searchLocalPlaces('山东')[0];
+      return [p.name, p.capital, Math.round(p.latitude)];
+    })(), ['山东省', '济南市', 37]);
+  check('搜「朝阳」→ 两个，但两个都是真的（区 + 市，分属不同一级）',
+    T.searchLocalPlaces('朝阳').map(p => p.name + '@' + p.province).sort(),
+    ['朝阳市@辽宁省', '朝阳区@北京市'].sort());
+  check('搜「吉林」→ 省和市都出，省排前面（名字以关键词开头者优先）',
+    T.searchLocalPlaces('吉林').map(p => p.name), ['吉林省', '吉林市']);
+  check('搜「香港」→ 只有自身（约定：香港澳门就到自身一级）',
+    T.searchLocalPlaces('香港').map(p => [p.name, p.kind]), [['香港特别行政区', 'special']]);
+  check('搜「上海」→ 上海市（直辖市条目）',
+    T.searchLocalPlaces('上海').map(p => [p.name, p.kind]), [['上海市', 'municipality']]);
+  // 「海」这个关键词很刁：以它开头的条目有 7 个（海淀区/海口市/海东市/海南省/
+  // 海北/海南/海西三个自治州），而上海市、威海市只是**包含**它 ——
+  // 这两个性质合在一起，把「开头优先」排序和截断都锁死了
+  check('搜「海」→ 全部以「海」开头（上海市、威海市不该排进来）',
+    T.searchLocalPlaces('海').every(p => p.name.startsWith('海')), true);
+  check('  而且被截到 SHOW 条（多了面板会被撑长）',
+    T.searchLocalPlaces('海').length, T.WEATHER_PLACE_SHOW);
+  check('一次网络都没打（搜索是本地的，离线也能用）', fetchCalls.length, 0);
+  check('空查询 → []', T.searchLocalPlaces('   '), []);
+  check('库里没有的写法 → []', T.searchLocalPlaces('zzzqqq'), []);
+  check('null 进来不炸', T.searchLocalPlaces(null), []);
 
-  // 真接口搜不到时就是 HTTP 200 + 一个只有 generationtime_ms 的 JSON（实测过）
-  fetchImpl = async () => jsonResponse({ generationtime_ms: 0.09 });
-  check('接口说没这个地名 → []（不是 null）', await T.searchPlaces('zqzz'), []);
-
-  fetchImpl = async () => { throw new Error('断了'); };
-  check('请求本身没成 → null（不是 []）', await T.searchPlaces('上海'), null);
-
-  fetchCalls = [];
-  fetchImpl = async () => jsonResponse(geoBody);
-  check('空查询 → []', await T.searchPlaces('   '), []);
-  check('  而且不打网络', fetchCalls.length, 0);
-
-  S.setLang('en');
-  fetchCalls = [];
-  await T.searchPlaces('shanghai');
-  check('切英文后地理编码语言也跟着变', fetchCalls[0].url.includes('language=en'), true);
-  S.setLang('zh');
-
-  /* ---- 收拾候选名单这件事单独再直接打一遍（不经过网络） ----
-     searchPlaces 那几条是走假 fetch 的，能验端到端；这里验的是入口处的脏数据。 */
-  check('给 null 进来不炸（接口字段缺失时会这样）', T.narrowPlaces(null), []);
-  check('给个对象进来也不炸', T.narrowPlaces({ results: [] }), []);
-  const many = [];
-  for (let i = 0; i < T.WEATHER_PLACE_SHOW + 6; i++) {
-    many.push({ name: '城' + i, latitude: i, longitude: i, country: '中国', population: 1000 * i });
-  }
-  const capped = T.narrowPlaces(many);
-  check('候选再多也只显示 SHOWN 条（多了面板会被撑长）', capped.length, T.WEATHER_PLACE_SHOW);
-  check('  留下的是人口最多的那几条（按人口从大到小排）',
-    capped[0].population > capped[1].population, true);
-  check('  条目里的 null / 没名字的都被甩掉',
-    T.narrowPlaces([null, {}, { name: '', latitude: 1, longitude: 2 },
-                    { name: '甲城', latitude: 3, longitude: 4 }]).length, 1);
-  check('  人口字段缺失统一记成 0（后面全靠它分辨大城市和村子）',
-    T.narrowPlaces([{ name: '乙村', latitude: 1, longitude: 2 }])[0].population, 0);
+  /* ---- 城市库本身的完整性 ----
+     这个文件是生成的（tools/make-china-places.js）。生成的产物必须有守卫，
+     否则一次失败的生成会把「搜不到任何城市」带进仓库 —— 而且不会报任何错。 */
+  check('城市库有 480+ 条', CHINA_PLACES.length >= 480, true);
+  check('  一级条目（省 / 直辖市 / 特区）正好 34 个',
+    CHINA_PLACES.filter(e => !e.p).length, 34);
+  check('  每条都有名字和在中国范围内的坐标',
+    CHINA_PLACES.every(e => e.n && Number.isFinite(e.la) && Number.isFinite(e.lo)
+      && e.la > 3 && e.la < 54 && e.lo > 73 && e.lo < 136), true);
+  check('  山东省有 16 个市', CHINA_PLACES.filter(e => e.p === '山东省').length, 16);
+  check('  重庆市有 38 个区（直辖市到区）', CHINA_PLACES.filter(e => e.p === '重庆市').length, 38);
+  check('  香港 / 澳门 / 台湾没有下级（只收自身一级）',
+    CHINA_PLACES.filter(e => ['香港特别行政区', '澳门特别行政区', '台湾省'].includes(e.p)).length, 0);
+  check('  每个省条目都带着省会名',
+    CHINA_PLACES.filter(e => e.k === 'province').every(e => e.cap), true);
+  check('  省条目的坐标用的是省会城市的（不是省的几何中心）',
+    (() => {
+      const sd  = CHINA_PLACES.find(e => e.n === '山东省');
+      const jn  = CHINA_PLACES.find(e => e.n === '济南市');
+      return Math.abs(sd.la - jn.la) < 0.01 && Math.abs(sd.lo - jn.lo) < 0.01;
+    })(), true);
+  check('  直辖市 / 特区条目不需要省会名',
+    CHINA_PLACES.filter(e => ['municipality', 'special'].includes(e.k)).every(e => !e.cap), true);
 
   /* ---- 结果列表渲染 ----
-     null / [] 必须在界面上翻成**不同**的两句话：一个让人换关键词，
-     一个让人查网络。合成一句就等于把用户的下一步动作抹掉了。 */
+     搜索是本地的、同步的，所以「搜不动」这种状态不存在了。
+     提示只剩一种：库里没有 → 换个写法。 */
   const resultsBox = fakeDomNode();
   const placeInput = { value: '' };
   domNodes.set('weatherResults', resultsBox);
   domNodes.set('weatherPlaceInput', placeInput);
 
-  fetchImpl = async () => jsonResponse({ results: [
-    { name: '<img src=x onerror=alert(1)>', latitude: 1, longitude: 2, admin1: 'A', country: 'B' },
-  ] });
-  placeInput.value = 'x';
+  placeInput.value = '朝阳';
   await T.runPlaceSearch();
-  // 城市名来自外部接口，和 topSites 的标题是同一类东西，必须转义
-  check('城市名必须转义（不许把外部字符串当 HTML 插进去）',
-    [resultsBox.innerHTML.includes('<img'), resultsBox.innerHTML.includes('&lt;img')], [false, true]);
-  check('结果按钮带上了点选用的下标',
+  // 名字来自本地库，但「外部数据插 innerHTML 前必须转义」这条规矩不分来源
+  check('结果带上了点选用的下标',
     /data-action="pick-weather-place" data-place-index="0"/.test(resultsBox.innerHTML), true);
+  check('  两个候选都画出来了，各带所属一级',
+    [resultsBox.innerHTML.includes('朝阳区'), resultsBox.innerHTML.includes('朝阳市'),
+     resultsBox.innerHTML.includes('北京市'), resultsBox.innerHTML.includes('辽宁省')],
+    [true, true, true, true]);
   check('  下标指向的结果真的存下来了',
-    [T.getLastPlaceResults().length, T.getLastPlaceResults()[0].latitude], [1, 1]);
+    [T.getLastPlaceResults().length, T.getLastPlaceResults()[0].province].sort(),
+    [2, '北京市'].sort());
 
-  fetchImpl = async () => jsonResponse({});
+  // 库本身是生成的、干净的，但「渲染外部字符串必须转义」这条不能靠库里碰巧
+  // 没有坏字符串来保证。往库里塞一条假的恶意条目，验完就拿出来。
+  const evil = { n: 'XSSMARK<img src=x onerror=alert(1)>', la: 30, lo: 120, p: 'XSS省', k: 'city' };
+  CHINA_PLACES.push(evil);
+  placeInput.value = 'XSSMARK';
   await T.runPlaceSearch();
-  check('没找到 → 提示「换个说法试试」',
+  check('名字里的 HTML 必须被转义（不许把外部字符串当 HTML 插进去）',
+    [resultsBox.innerHTML.includes('<img'), resultsBox.innerHTML.includes('&lt;img')], [false, true]);
+  CHINA_PLACES.splice(CHINA_PLACES.indexOf(evil), 1);
+
+  placeInput.value = 'zzzqqq';
+  await T.runPlaceSearch();
+  check('库里没有 → 提示「换个写法」',
     resultsBox.innerHTML.includes(S.T('settings.weatherPlace.empty')), true);
-
-  fetchImpl = async () => { throw new Error('断了'); };
-  await T.runPlaceSearch();
-  check('搜不动 → 提示「检查一下网络」',
-    resultsBox.innerHTML.includes(S.T('settings.weatherPlace.failed')), true);
 
   placeInput.value = '';
   await T.runPlaceSearch();
@@ -1452,10 +1450,23 @@ async function part11() {
      对一个只想看天气的功能来说代价太大。要加，得是深思熟虑，不能是顺手。 */
   check('天气没有偷偷加 host_permissions（靠 CORS 走通就够）',
     MANIFEST.host_permissions === undefined, true);
-  check('两个接口域名是写死的常量，不是拼在字符串中间',
-    /const WEATHER_API_HOST\s*=\s*'https:\/\/api\.open-meteo\.com'/.test(APP_SRC)
-      && /const WEATHER_GEOCODE_HOST\s*=\s*'https:\/\/geocoding-api\.open-meteo\.com'/.test(APP_SRC),
-    true);
+  check('预报接口域名是写死的常量，不是拼在字符串中间',
+    /const WEATHER_API_HOST\s*=\s*'https:\/\/api\.open-meteo\.com'/.test(APP_SRC), true);
+  /* 搜索不许再走接口。#24 的教训：Open-Meteo 地理编码对中国地名不可用
+     （真正的青岛市都不在返回里），改回网络搜索就是把那个 bug 请回来。 */
+  check('城市搜索不再打网络（源码里没有地理编码接口地址）',
+    APP_SRC.includes('geocoding-api.open-meteo.com/v1/search'), false);
+  check('  app.js 里也没有 searchPlaces 这个旧函数了',
+    /function searchPlaces\(/.test(APP_SRC), false);
+
+  /* ---- 城市库的引入顺序 ----
+     searchLocalPlaces 在 app.js 顶层读不到 CHINA_PLACES，但运行时必须有。
+     index.html 里 china-places.js 必须在 app.js **之前**引入，
+     顺序反了会是 "CHINA_PLACES is not defined"，而且只在真机上炸。 */
+  const placesTagAt = HTML_SRC.indexOf('<script src="china-places.js">');
+  const appTagAt    = HTML_SRC.indexOf('<script src="app.js">');
+  check('index.html 引入了 china-places.js，且在 app.js 之前',
+    placesTagAt > 0 && appTagAt > placesTagAt, true);
 
   /* ---- 拉不到时必须安静 ----
      新标签页是最不该出现错误提示的地方：断网、被墙、接口挂了，用户该看到的

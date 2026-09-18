@@ -98,24 +98,19 @@ const STRINGS = {
     'weather.storm':           '雷雨',
     'weather.unknown':         '天气',
 
-    /* ---- 人口（城市搜索结果里用来分辨同名地名）----
-       四个键中英都在，但**实际用哪两个跟着语言走**（见 formatPopulation）：
-       中文用「万 / 人」，英文用「M / k」。别只加一边 —— PART 9 会抓中英词目不齐。 */
-    'weather.pop.wan':         '{n} 万人',
-    'weather.pop.people':      '{n} 人',
-    'weather.pop.million':     '{n} 百万人',
-    'weather.pop.k':           '{n} 千人',
+    /* ---- 城市搜索（本地库，省/市两级行政区划）----
+       「省会」「直辖市」是界面文案，走表；省名市名是数据，不走。 */
+    'weather.capital':           '省会 · {city}',
+    'weather.municipality':      '直辖市',
 
     /* ---- 天气：设置面板里那两行 ---- */
     'settings.weather.name':         '当地天气',
     'settings.weather.desc':         '在新标签页显示所选城市的实时天气。关掉只是不显示，选过的城市不会丢。',
     'settings.weatherPlace.name':    '天气城市',
     'settings.weatherPlace.current': '当前：{city}',
-    'settings.weatherPlace.input':   '输入城市名，回车搜索',
+    'settings.weatherPlace.input':   '输入城市名，回车搜索（中国省、市两级）',
     'settings.weatherPlace.search':  '搜索',
-    'settings.weatherPlace.busy':    '搜索中…',
-    'settings.weatherPlace.empty':   '没找到这个城市，换个说法试试',
-    'settings.weatherPlace.failed':  '搜索失败，检查一下网络再试',
+    'settings.weatherPlace.empty':   '城市库里没有 —— 只收录中国省、市两级行政区，换个写法试试',
 
     /* ---- 区块标题 ---- */
     'section.openTabs':        '打开的标签页',
@@ -275,20 +270,16 @@ const STRINGS = {
     'weather.storm':           'Thunderstorm',
     'weather.unknown':         'Weather',
 
-    'weather.pop.wan':         '{n} wan',
-    'weather.pop.people':      '{n} people',
-    'weather.pop.million':     '{n}M',
-    'weather.pop.k':           '{n}k',
+    'weather.capital':           'Provincial capital: {city}',
+    'weather.municipality':      'Municipality',
 
     'settings.weather.name':         'Local weather',
     'settings.weather.desc':         'Show live weather for the city you pick, right on the new tab. Turning this off only hides it — your city stays saved.',
     'settings.weatherPlace.name':    'Weather city',
     'settings.weatherPlace.current': 'Now showing: {city}',
-    'settings.weatherPlace.input':   'Type a city name and press Enter',
+    'settings.weatherPlace.input':   'Type a city name and press Enter (China, province/city)',
     'settings.weatherPlace.search':  'Search',
-    'settings.weatherPlace.busy':    'Searching…',
-    'settings.weatherPlace.empty':   'No city matched — try another spelling',
-    'settings.weatherPlace.failed':  'Search failed — check your connection',
+    'settings.weatherPlace.empty':   'Not in the built-in list (China, province & city level) — try another spelling',
 
     'section.openTabs':        'Open tabs',
     'section.savedForLater':   'Saved for later',
