@@ -4,20 +4,67 @@
    also updating the mockup. This is the approved design.
    ============================================================ */
 
+/* ============================================================
+   配色
+
+   基础色写成 **RGB 三元组**（`--rgb-*`），所有实色和半透明色都从三元组
+   派生。这样换肤时每个主题只要覆盖三元组那十几行 —— 那些 `rgba(...,0.08)`
+   的淡色块会自动跟着变，不用在每个主题里再抄一遍（抄就一定会漏）。
+
+   主题由 <html data-theme="..."> 决定，见文件末尾的「主题」一节。
+   ============================================================ */
 :root {
-  --ink: #1a1613;
-  --paper: #f8f5f0;
-  --warm-gray: #e8e2da;
-  --muted: #9a918a;
-  --accent-amber: #c8713a;
-  --accent-sage: #5a7a62;
-  --accent-slate: #5a6b7a;
-  --accent-rose: #b35a5a;
-  --status-active: #3d7a4a;
-  --status-cooling: #b8892e;
-  --status-abandoned: #b35a5a;
-  --card-bg: #fffdf9;
-  --shadow: rgba(26, 22, 19, 0.06);
+  --rgb-ink:              26 22 19;
+  --rgb-paper:            248 245 240;
+  --rgb-warm-gray:        232 226 218;
+  --rgb-muted:            154 145 138;
+  --rgb-accent-amber:     200 113 58;
+  --rgb-accent-sage:      90 122 98;
+  --rgb-accent-slate:     90 107 122;
+  --rgb-accent-rose:      179 90 90;
+  --rgb-status-active:    61 122 74;
+  --rgb-status-cooling:   184 137 46;
+  --rgb-status-abandoned: 179 90 90;
+  --rgb-card-bg:          255 253 249;
+  --rgb-on-accent:        255 255 255;      /* 实心按钮上的字 */
+  --rgb-accent-sage-strong: 74 105 82;      /* 实心按钮的 hover */
+
+  /* ---- 派生：实色 ---- */
+  --ink:              rgb(var(--rgb-ink));
+  --paper:            rgb(var(--rgb-paper));
+  --warm-gray:        rgb(var(--rgb-warm-gray));
+  --muted:            rgb(var(--rgb-muted));
+  --accent-amber:     rgb(var(--rgb-accent-amber));
+  --accent-sage:      rgb(var(--rgb-accent-sage));
+  --accent-slate:     rgb(var(--rgb-accent-slate));
+  --accent-rose:      rgb(var(--rgb-accent-rose));
+  --status-active:    rgb(var(--rgb-status-active));
+  --status-cooling:   rgb(var(--rgb-status-cooling));
+  --status-abandoned: rgb(var(--rgb-status-abandoned));
+  --card-bg:          rgb(var(--rgb-card-bg));
+  --on-accent:        rgb(var(--rgb-on-accent));
+  --accent-sage-strong: rgb(var(--rgb-accent-sage-strong));
+
+  /* ---- 派生：半透明（淡底 / 描边 / 光环 / 阴影）----
+     这些以前是散落在各处的硬编码 rgba，换肤时会整体失真，所以收在这里。 */
+  --tint-muted:         rgb(var(--rgb-muted) / 0.1);
+  --tint-amber-soft:    rgb(var(--rgb-accent-amber) / 0.04);
+  --tint-amber:         rgb(var(--rgb-accent-amber) / 0.09);
+  --border-amber:       rgb(var(--rgb-accent-amber) / 0.22);
+  --tint-rose-soft:     rgb(var(--rgb-accent-rose) / 0.04);
+  --tint-rose:          rgb(var(--rgb-accent-rose) / 0.09);
+  --border-rose:        rgb(var(--rgb-accent-rose) / 0.15);
+  --tint-active:        rgb(var(--rgb-status-active) / 0.08);
+  --tint-cooling:       rgb(var(--rgb-status-cooling) / 0.08);
+  --tint-abandoned:     rgb(var(--rgb-status-abandoned) / 0.08);
+  --tint-sage-soft:     rgb(var(--rgb-accent-sage) / 0.04);
+  --tint-sage:          rgb(var(--rgb-accent-sage) / 0.09);
+  --border-sage:        rgb(var(--rgb-accent-sage) / 0.3);
+  --border-sage-soft:   rgb(var(--rgb-accent-sage) / 0.22);
+  --ring-sage:          rgb(var(--rgb-accent-sage) / 0.05);
+  --ring-sage-soft:     rgb(var(--rgb-accent-sage) / 0.03);
+  --shadow:             rgb(var(--rgb-ink) / 0.06);
+  --shadow-strong:      rgb(0 0 0 / 0.2);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -242,6 +289,28 @@ header {
 
 /* 不是开关的设置行（快捷键）—— 整行没有可点的语义，光标别装成能点 */
 .setting-row-static { cursor: default; }
+
+/* 主题下拉 —— 原生 select 只留一个底框，颜色全走变量，六个主题都跟着变。
+   ⚠️ option 的 background/color 也要给：Chrome 的下拉列表是它自己画的，
+   只继承 select 的字体，不继承背景 —— 深色主题下会变成黑字压在深底上。 */
+.setting-select {
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--warm-gray);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.setting-select option {
+  background: var(--card-bg);
+  color: var(--ink);
+}
+
+.setting-select:focus-visible { outline: 2px solid var(--accent-sage); outline-offset: 2px; }
 
 /* 快捷键的键帽。JS 只往里塞文字，样式全在这里 —— 
    未绑定时加 .shortcut-keys-unset，「未设置」三个字不能长得像一组按键。 */
@@ -491,7 +560,7 @@ header {
 }
 
 .quick-site-open:hover {
-  background: rgba(154, 145, 138, 0.1);
+  background: var(--tint-muted);
 }
 
 .quick-site-icon {
@@ -634,7 +703,7 @@ body.dragging-site .quick-site-open {
 }
 
 .quick-site-add:hover {
-  background: rgba(154, 145, 138, 0.1);
+  background: var(--tint-muted);
   color: var(--ink);
 }
 
@@ -748,8 +817,8 @@ body.dragging-site .quick-site-open {
 
 /* ---- Tab cleanup banner ---- */
 .tab-cleanup-banner {
-  background: linear-gradient(135deg, rgba(200, 113, 58, 0.04), rgba(200, 113, 58, 0.09));
-  border: 1px solid rgba(200, 113, 58, 0.18);
+  background: linear-gradient(135deg, var(--tint-amber-soft), var(--tint-amber));
+  border: 1px solid var(--border-amber);
   border-radius: 8px;
   padding: 16px 24px;
   display: flex;
@@ -768,7 +837,7 @@ body.dragging-site .quick-site-open {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(200, 113, 58, 0.1);
+  background: var(--tint-amber);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -812,8 +881,8 @@ body.dragging-site .quick-site-open {
 
 /* ---- Nudge banner ---- */
 .nudge-banner {
-  background: linear-gradient(135deg, rgba(179, 90, 90, 0.04), rgba(179, 90, 90, 0.08));
-  border: 1px solid rgba(179, 90, 90, 0.15);
+  background: linear-gradient(135deg, var(--tint-rose-soft), var(--tint-rose));
+  border: 1px solid var(--border-rose);
   border-radius: 8px;
   padding: 16px 24px;
   display: flex;
@@ -826,7 +895,7 @@ body.dragging-site .quick-site-open {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(179, 90, 90, 0.1);
+  background: var(--tint-rose);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -976,17 +1045,17 @@ body.dragging-site .quick-site-open {
 
 .mission-tag.active {
   color: var(--status-active);
-  background: rgba(61, 122, 74, 0.08);
+  background: var(--tint-active);
 }
 
 .mission-tag.cooling {
   color: var(--status-cooling);
-  background: rgba(184, 137, 46, 0.08);
+  background: var(--tint-cooling);
 }
 
 .mission-tag.abandoned {
   color: var(--status-abandoned);
-  background: rgba(179, 90, 90, 0.08);
+  background: var(--tint-rose);
 }
 
 /* Tab indicator badge — shows how many Chrome tabs are still open for this mission */
@@ -997,7 +1066,7 @@ body.dragging-site .quick-site-open {
   font-size: 10px;
   font-weight: 500;
   color: var(--accent-amber);
-  background: rgba(200, 113, 58, 0.08);
+  background: var(--tint-amber);
   padding: 2px 8px;
   border-radius: 3px;
 }
@@ -1028,7 +1097,7 @@ body.dragging-site .quick-site-open {
   padding: 8px 4px;
   border-radius: 0;
   border: none;
-  border-bottom: 1px solid rgba(154, 145, 138, 0.1);
+  border-bottom: 1px solid var(--tint-muted);
   position: relative;
   display: flex;
   align-items: center;
@@ -1068,7 +1137,7 @@ body.dragging-site .quick-site-open {
 
 /* Duplicate border highlight */
 .chip-has-dupes {
-  border-color: rgba(200, 113, 58, 0.25);
+  border-color: var(--border-amber);
 }
 
 /* Action buttons grouped on the right */
@@ -1103,17 +1172,17 @@ body.dragging-site .quick-site-open {
 
 .chip-action:hover {
   opacity: 1;
-  background: rgba(154, 145, 138, 0.1);
+  background: var(--tint-muted);
 }
 
 .chip-save:hover {
   color: var(--accent-sage);
-  background: rgba(90, 122, 98, 0.08);
+  background: var(--tint-sage);
 }
 
 .chip-close:hover {
   color: var(--status-abandoned);
-  background: rgba(179, 90, 90, 0.08);
+  background: var(--tint-rose);
 }
 
 .page-chip.clickable {
@@ -1122,7 +1191,7 @@ body.dragging-site .quick-site-open {
 }
 
 .page-chip.clickable:hover {
-  background: rgba(200, 113, 58, 0.04);
+  background: var(--tint-amber-soft);
 }
 
 /* "+N more" overflow chip */
@@ -1199,24 +1268,24 @@ body.dragging-site .quick-site-open {
 }
 
 .action-btn.close-tabs {
-  border-color: rgba(200, 113, 58, 0.3);
+  border-color: var(--border-amber);
   color: var(--accent-amber);
-  background: rgba(200, 113, 58, 0.04);
+  background: var(--tint-amber-soft);
 }
 
 .action-btn.close-tabs:hover {
-  background: rgba(200, 113, 58, 0.1);
+  background: var(--tint-amber);
   border-color: var(--accent-amber);
 }
 
 .action-btn.save-tabs {
-  border-color: rgba(90, 122, 98, 0.3);
+  border-color: var(--border-sage);
   color: var(--accent-sage);
-  background: rgba(90, 122, 98, 0.04);
+  background: var(--tint-sage-soft);
 }
 
 .action-btn.save-tabs:hover {
-  background: rgba(90, 122, 98, 0.1);
+  background: var(--tint-sage);
   border-color: var(--accent-sage);
 }
 
@@ -1260,7 +1329,7 @@ body.dragging-site .quick-site-open {
   font-weight: 500;
   padding: 12px 24px;
   border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  box-shadow: 0 8px 32px var(--shadow-strong);
   z-index: 100;
   opacity: 0;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1374,7 +1443,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 /* ---- "Domain" tag on static domain cards ---- */
 .mission-tag.neutral {
   color: var(--muted);
-  background: rgba(154, 145, 138, 0.1);
+  background: var(--tint-muted);
 }
 
 /* ================================================================
@@ -1404,12 +1473,12 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: rgba(90, 122, 98, 0.1);
-  border: 1.5px solid rgba(90, 122, 98, 0.3);
+  background: var(--tint-sage);
+  border: 1.5px solid var(--border-sage);
 
   /* Soft sage glow */
-  box-shadow: 0 0 0 8px rgba(90, 122, 98, 0.05),
-              0 0 0 16px rgba(90, 122, 98, 0.03);
+  box-shadow: 0 0 0 8px var(--ring-sage),
+              0 0 0 16px var(--ring-sage-soft);
 
   display: flex;
   align-items: center;
@@ -1464,8 +1533,8 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   gap: 12px;
 
   /* Sage green tint — matches accent-sage but very light */
-  background: linear-gradient(135deg, rgba(90, 122, 98, 0.05), rgba(90, 122, 98, 0.10));
-  border: 1px solid rgba(90, 122, 98, 0.22);
+  background: linear-gradient(135deg, var(--ring-sage), var(--tint-sage));
+  border: 1px solid var(--border-sage-soft);
   border-radius: 8px;
   padding: 10px 16px;
 
@@ -1519,7 +1588,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   font-family: 'DM Sans', sans-serif;
   font-size: 12px;
   font-weight: 500;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent-sage);
   border: none;
   border-radius: 5px;
@@ -1531,7 +1600,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 .update-banner-btn:hover {
-  background: #4a6952; /* slightly darker sage */
+  background: var(--accent-sage-strong);
 }
 
 .update-banner-btn:disabled {
@@ -1557,7 +1626,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 .update-banner-dismiss:hover {
-  background: rgba(26, 22, 19, 0.06);
+  background: var(--shadow);
   color: var(--ink);
 }
 
@@ -1611,7 +1680,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   align-items: flex-start;
   gap: 10px;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(154, 145, 138, 0.12);
+  border-bottom: 1px solid var(--tint-muted);
   animation: fadeUp 0.3s ease both;
 }
 
@@ -1810,7 +1879,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid rgba(154, 145, 138, 0.08);
+  border-bottom: 1px solid var(--tint-muted);
 }
 
 .archive-item:last-child {
@@ -1871,7 +1940,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 
 /* ---- 「关闭全部」的确认态：颜色加重，明确区分于普通态 ---- */
 .action-btn.close-tabs.confirming {
-  background: rgba(200, 113, 58, 0.18);
+  background: var(--border-amber);
   border-color: var(--accent-amber);
   color: var(--accent-amber);
   font-weight: 600;
@@ -1879,6 +1948,109 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 @keyframes confirm-pulse {
-  0%, 100% { background: rgba(200, 113, 58, 0.18); }
-  50%      { background: rgba(200, 113, 58, 0.30); }
+  0%, 100% { background: var(--border-amber); }
+  50%      { background: var(--border-amber); }
+}
+
+/* ============================================================
+   主题
+
+   只覆盖 `--rgb-*` 三元组 —— 实色和那些半透明的淡色块都是从三元组派生的，
+   会自动跟着走。**别在这里写任何具体的 rgba** ，写了就等于把这个主题钉死，
+   换肤时会有一块颜色不跟着变（而且不报错，只能靠眼睛发现）。
+
+   data-theme 由 app.js 的 applyTheme() 写在 <html> 上。
+   六个选项：纸感（默认）/ 浅色 / 深色 / 松林 / 墨蓝 / 跟随系统。
+   「跟随系统」在 JS 里先解析成 light 或 dark 再落到这里，所以 CSS 里没有它。
+   ============================================================ */
+
+/* 纸感（默认）—— 米白纸面 + 暖灰，就是原本那一套 */
+html[data-theme="paper"] {
+  --rgb-ink: 26 22 19;
+  --rgb-paper: 248 245 240;
+  --rgb-warm-gray: 232 226 218;
+  --rgb-muted: 154 145 138;
+  --rgb-accent-amber: 200 113 58;
+  --rgb-accent-sage: 90 122 98;
+  --rgb-accent-slate: 90 107 122;
+  --rgb-accent-rose: 179 90 90;
+  --rgb-status-active: 61 122 74;
+  --rgb-status-cooling: 184 137 46;
+  --rgb-status-abandoned: 179 90 90;
+  --rgb-card-bg: 255 253 249;
+  --rgb-on-accent: 255 255 255;
+  --rgb-accent-sage-strong: 74 105 82;
+}
+
+/* 浅色 —— 中性偏冷，比纸感干净一点 */
+html[data-theme="light"] {
+  --rgb-ink: 22 25 30;
+  --rgb-paper: 246 247 250;
+  --rgb-warm-gray: 226 230 235;
+  --rgb-muted: 138 145 155;
+  --rgb-accent-amber: 193 106 53;
+  --rgb-accent-sage: 74 118 96;
+  --rgb-accent-slate: 88 105 122;
+  --rgb-accent-rose: 176 88 88;
+  --rgb-status-active: 56 118 72;
+  --rgb-status-cooling: 176 130 42;
+  --rgb-status-abandoned: 176 88 88;
+  --rgb-card-bg: 255 255 255;
+  --rgb-on-accent: 255 255 255;
+  --rgb-accent-sage-strong: 60 96 78;
+}
+
+/* 深色 —— 中性暗色。重点色一律**提亮**：浅色主题里好看的 #5a7a62
+   放到深色底上会糊成一团，所以这里用的是同一色相的高明度版本。 */
+html[data-theme="dark"] {
+  --rgb-ink: 232 230 227;
+  --rgb-paper: 22 24 28;
+  --rgb-warm-gray: 42 45 52;
+  --rgb-muted: 138 144 154;
+  --rgb-accent-amber: 217 138 78;
+  --rgb-accent-sage: 127 174 142;
+  --rgb-accent-slate: 143 163 184;
+  --rgb-accent-rose: 217 138 138;
+  --rgb-status-active: 111 191 131;
+  --rgb-status-cooling: 217 169 78;
+  --rgb-status-abandoned: 217 138 138;
+  --rgb-card-bg: 30 33 39;
+  --rgb-on-accent: 20 22 26;
+  --rgb-accent-sage-strong: 100 145 115;
+}
+
+/* 松林 —— 墨绿调深色 */
+html[data-theme="forest"] {
+  --rgb-ink: 226 236 228;
+  --rgb-paper: 19 26 22;
+  --rgb-warm-gray: 36 48 41;
+  --rgb-muted: 134 154 141;
+  --rgb-accent-amber: 217 160 90;
+  --rgb-accent-sage: 127 196 154;
+  --rgb-accent-slate: 143 176 160;
+  --rgb-accent-rose: 217 138 138;
+  --rgb-status-active: 127 196 154;
+  --rgb-status-cooling: 217 180 90;
+  --rgb-status-abandoned: 217 138 138;
+  --rgb-card-bg: 26 34 29;
+  --rgb-on-accent: 16 24 19;
+  --rgb-accent-sage-strong: 96 156 122;
+}
+
+/* 墨蓝 —— 靛蓝调深色 */
+html[data-theme="ink"] {
+  --rgb-ink: 226 232 242;
+  --rgb-paper: 19 23 32;
+  --rgb-warm-gray: 35 41 54;
+  --rgb-muted: 133 144 163;
+  --rgb-accent-amber: 224 176 112;
+  --rgb-accent-sage: 111 176 192;
+  --rgb-accent-slate: 143 168 200;
+  --rgb-accent-rose: 217 138 154;
+  --rgb-status-active: 116 192 160;
+  --rgb-status-cooling: 217 169 78;
+  --rgb-status-abandoned: 217 138 154;
+  --rgb-card-bg: 26 31 43;
+  --rgb-on-accent: 16 20 29;
+  --rgb-accent-sage-strong: 86 140 155;
 }

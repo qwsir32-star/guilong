@@ -21,6 +21,9 @@
  *   PART 8  页头三栏版式回归守卫（孩子必须显式 grid-column）
  *   PART 9  文案表（中英对应 / T 与 Tn / data-i18n 落 DOM / 不许绕开表写死文案 /
  *           旧品牌名不许回流 / manifest 用新名字与图标 / LICENSE 保留原始署名）
+ *   PART 10 版式静态守卫（页头网格 / 天气条位置 / 设置面板结构）
+ *   PART 11 当地天气（本地城市库 / 缓存 / 失败要安静）
+ *   PART 12 主题色（解析 / 落 <html> / localStorage 镜像 / 主题块只写三元组）
  */
 const fs = require('fs');
 const path = require('path');
@@ -42,6 +45,10 @@ const code = fs.readFileSync(APP, 'utf8') + `
   updatePinnedSite, movePinnedSite, promoteTopSite,
   faviconSignature, dropIfDefaultFavicon,
   getUiPrefs, setUiPref, applyUiPrefs, looksLikeUrl, runSearch, focusSearchBox,
+  resolveTheme, normalizeTheme, paintTheme, mirrorTheme, isDarkTheme,
+  readSettingValue,
+  THEME_IDS, DARK_THEME_IDS, THEME_SYSTEM, DEFAULT_THEME, THEME_MIRROR_KEY,
+  UI_PREFS_DEFAULTS,
   formatShortcut, formatShortcutParts, COMMAND_NAME, SHORTCUTS_URL,
   weatherText, weatherIcon, formatTemperature, formatWeatherRange, placeSubtitle,
   weatherCityLabel, weatherShouldShow, isWeatherCacheFresh,
@@ -145,7 +152,28 @@ const domNodes      = new Map();
 const settingInputs = [];
 const searchCalls   = [];
 const selectorMap   = new Map();   // querySelectorAll 用：选择器 → 假元素数组
-const fakeRoot      = { lang: '' }; // 假的 <html>，applyStaticStrings 会改它的 lang
+// 假的 <html>：applyStaticStrings 改它的 lang，paintTheme 改它的 dataset/colorScheme
+const fakeRoot      = { lang: '', dataset: {}, style: {} };
+
+/* ---------------- 受控的假 localStorage ----------------
+   主题的镜像写在这里（theme-boot.js 靠它在第一帧之前把配色定下来）。
+   用一个真的 Map 存，测试能直接看里面有没有、写的是什么。 */
+const localStore    = new Map();
+const localStorage  = {
+  getItem:    k => (localStore.has(k) ? localStore.get(k) : null),
+  setItem:    (k, v) => { localStore.set(k, String(v)); },
+  removeItem: k => { localStore.delete(k); },
+};
+
+/* ---------------- 受控的假「系统要深色吗」 ----------------
+   let 而不是 const：测试要能在中途把系统切成深色，验证「跟随系统」会跟着变。 */
+let systemDark = false;
+const windowStub = {
+  matchMedia: (q) => ({
+    matches: String(q).includes('dark') ? systemDark : false,
+    addEventListener: () => {},
+  }),
+};
 
 function fakeDomNode() {
   return {
@@ -169,7 +197,9 @@ const sandbox = {
     addEventListener: () => {},
     getElementById: (id) => domNodes.get(id) || null,
     querySelectorAll: (sel) => {
-      if (sel === 'input[data-setting]') return settingInputs;
+      // 设置面板里现在既有开关（checkbox）也有下拉（主题）——
+      // 选择器写成不带标签的 [data-setting]，两种都得回来
+      if (sel === '[data-setting]' || sel === 'input[data-setting]') return settingInputs;
       return selectorMap.get(sel) || [];
     },
     querySelector: () => null,
@@ -220,7 +250,8 @@ const sandbox = {
       },
     },
   },
-  window: {},
+  window: windowStub,
+  localStorage,
   globalThis: null,
   // 天气模块要用的：AbortController 做超时，fetch 走上面那个受控实现
   AbortController,
@@ -744,9 +775,9 @@ async function part7() {
 
   /* --- 开关的读写 --- */
   delete store.uiPrefs;
-  check('没设置过时读默认值（三个都开）',
+  check('没设置过时读默认值（三个都开 + 默认主题）',
     await T.getUiPrefs(),
-    { showQuickSites: true, showSearchBox: true, showWeather: true });
+    { showQuickSites: true, showSearchBox: true, showWeather: true, theme: 'paper' });
 
   await T.setUiPref('showQuickSites', false);
   check('关掉站点条后读回来是关的', (await T.getUiPrefs()).showQuickSites, false);
@@ -757,11 +788,11 @@ async function part7() {
   store.uiPrefs = { showQuickSites: false };
   check('缺的键自动补默认值',
     await T.getUiPrefs(),
-    { showQuickSites: false, showSearchBox: true, showWeather: true });
+    { showQuickSites: false, showSearchBox: true, showWeather: true, theme: 'paper' });
 
   await T.setUiPref('不存在的开关', false);
   check('未声明的开关不许写进去', Object.keys(await T.getUiPrefs()).sort(),
-    ['showQuickSites', 'showSearchBox', 'showWeather']);
+    ['showQuickSites', 'showSearchBox', 'showWeather', 'theme']);
 
   /* --- 开关落到 DOM 上 --- */
   domNodes.set('quickSites', fakeDomNode());
@@ -784,9 +815,12 @@ async function part7() {
   // 用户点设置面板里那个开关时，光标不该被抢到搜索框去。
   check('applyUiPrefs 不会自己抢光标',
     domNodes.get('searchInput').focusCount === undefined, true);
+  // 返回值里多一个 themeId：存储里存的是「选了什么」，themeId 是「真画出来的
+  // 是什么」。选了「跟随系统」时这两个不一样（system vs dark/light）。
   check('applyUiPrefs 把读到的开关返回出来',
     await T.applyUiPrefs(),
-    { showQuickSites: false, showSearchBox: true, showWeather: true });
+    { showQuickSites: false, showSearchBox: true, showWeather: true,
+      theme: 'paper', themeId: 'paper' });
 
   T.focusSearchBox();
   check('focusSearchBox 把光标放进搜索框',
@@ -1505,6 +1539,196 @@ async function part11() {
     /\.setting-row\s*~\s*\.setting-row\s*\{[^}]*border-top/.test(CSS_SRC), true);
 }
 
+async function part12() {
+  console.log('\n[PART 12] 主题色');
+
+  const CSS_SRC   = fs.readFileSync(path.join(EXT, 'style.css'), 'utf8');
+  const HTML_SRC  = srcOf('index.html');
+  const BOOT_SRC  = srcOf('theme-boot.js');
+
+  /* ---- 选了什么 → 画出什么 ----
+     resolveTheme 是这套逻辑的心脏：'system' 在这里被解析掉，不认识的值一律
+     退回默认。退回默认比抛错合适 —— 主题不是功能，选不出来顶多是丑。 */
+  check('纸感画纸感',   T.resolveTheme('paper'),  'paper');
+  check('浅色画浅色',   T.resolveTheme('light'),  'light');
+  check('深色画深色',   T.resolveTheme('dark'),   'dark');
+  check('松林画松林',   T.resolveTheme('forest'), 'forest');
+  check('墨蓝画墨蓝',   T.resolveTheme('ink'),    'ink');
+
+  // 不认识的值：老存储里的脏数据、手改的、未来删掉的主题，全都会走到这里
+  check('不认识的值一律回默认主题',
+    [undefined, null, '', 'PAPER', 'nope', true, 42, {}].map(v => T.resolveTheme(v)),
+    Array(8).fill(T.DEFAULT_THEME));
+
+  /* ---- 跟随系统 ---- */
+  systemDark = false;
+  check('系统是浅色 → 跟随系统画出浅色', T.resolveTheme('system'), 'light');
+  systemDark = true;
+  check('系统是深色 → 跟随系统画出深色', T.resolveTheme('system'), 'dark');
+
+  // 存储里**必须留着 system**：留着才能在下拉框里把选中项显示回「跟随系统」。
+  // 在这里就解析掉的话，用户打开设置会看到选项莫名其妙停在「浅色」上。
+  check('normalizeTheme 原样保留 system', T.normalizeTheme('system'), 'system');
+  check('normalizeTheme 把不认识的拉回默认', T.normalizeTheme('nope'), 'paper');
+
+  /* ---- 深色主题有哪些（color-scheme 靠它）---- */
+  check('深色主题认得出来', T.THEME_IDS.filter(id => T.isDarkTheme(id)).sort(),
+    ['dark', 'forest', 'ink']);
+  check('深色清单里的每个 id 都是真主题',
+    T.DARK_THEME_IDS.filter(id => !T.THEME_IDS.includes(id)), []);
+
+  /* ---- 写到 <html> 上 ---- */
+  check('paintTheme 把主题写到 <html data-theme> 上', T.paintTheme('dark'), 'dark');
+  check('  data-theme 真的是它', fakeRoot.dataset.theme, 'dark');
+  check('  深色主题的 color-scheme 是 dark（滚动条才不会是亮的一条）',
+    fakeRoot.style.colorScheme, 'dark');
+  T.paintTheme('light');
+  check('浅色主题的 color-scheme 是 light', fakeRoot.style.colorScheme, 'light');
+
+  /* ---- 存储里存的是字符串，不是布尔 ----
+     这是最容易踩的一个坑：setUiPref 原来一律 !!value，主题存进去就变成
+     true，读回来不认识 → 退回默认 → 页面永远是纸感，而存储里写着 true。
+     不报错、不崩，只是「选了没反应」。 */
+  delete store.uiPrefs;
+  await T.setUiPref('theme', 'forest');
+  check('主题存进去是字符串', (await T.getUiPrefs()).theme, 'forest');
+  await T.setUiPref('theme', '不存在的主题');
+  check('不认识的主题存进去会被拉回默认', (await T.getUiPrefs()).theme, 'paper');
+  check('  而且不会把 system 之外的脏值留在存储里',
+    T.THEME_IDS.includes((await T.getUiPrefs()).theme), true);
+
+  // 按默认值的类型定型，开关那一边不能被改成字符串
+  delete store.uiPrefs;
+  await T.setUiPref('showQuickSites', false);
+  check('开关仍然存成布尔（改主题那套定型逻辑没把开关带坏）',
+    (await T.getUiPrefs()).showQuickSites, false);
+
+  /* ---- localStorage 镜像 ----
+     theme-boot.js 在 <head> 里同步读它，所以每次改主题都得写一份。
+     少写这份的后果是深色主题每开一个新标签页先闪一下米白 —— 真机上才看得见。 */
+  delete store.uiPrefs;
+  await T.setUiPref('theme', 'ink');
+  check('改主题时同步写了 localStorage 镜像',
+    localStorage.getItem(T.THEME_MIRROR_KEY), 'ink');
+  check('镜像的键名和 theme-boot.js 里读的是同一个',
+    /localStorage\.getItem\(MIRROR_KEY\)/.test(BOOT_SRC) &&
+    /var MIRROR_KEY = '([^']+)'/.exec(BOOT_SRC)[1] === T.THEME_MIRROR_KEY, true);
+
+  /* ---- 落到 DOM：下拉框的选中项 + <html> ---- */
+  settingInputs.length = 0;
+  const themeSelect = { tagName: 'SELECT', dataset: { setting: 'theme' }, value: '' };
+  settingInputs.push(themeSelect);
+
+  store.uiPrefs = { theme: 'dark' };
+  await T.applyUiPrefs();
+  check('下拉框的选中项跟着存储走', themeSelect.value, 'dark');
+  check('主题真的写到了 <html> 上', fakeRoot.dataset.theme, 'dark');
+
+  systemDark = true;
+  store.uiPrefs = { theme: 'system' };
+  const applied = await T.applyUiPrefs();
+  check('跟随系统 + 系统深色 → 画深色', fakeRoot.dataset.theme, 'dark');
+  check('  但下拉里显示的还是「跟随系统」（存储里存的是指令不是结果）',
+    themeSelect.value, 'system');
+  check('  返回值的 themeId 是解析后的那个', applied.themeId, 'dark');
+  check('  镜像里存的也是 system（解析留给开机那一步做）',
+    localStorage.getItem(T.THEME_MIRROR_KEY), 'system');
+  systemDark = false;
+
+  /* ---- 读设置控件的值 ----
+     下拉身上没有 checked。读错了属性不会报错，只会让主题永远是默认的那个。 */
+  check('下拉读 value',   T.readSettingValue({ tagName: 'SELECT', value: 'ink' }), 'ink');
+  check('开关读 checked', T.readSettingValue({ checked: false }), false);
+  check('开关没勾 → false（不是 undefined）', T.readSettingValue({}), false);
+  check('空对象也不炸',   T.readSettingValue(null), false);
+
+  /* ---- theme-boot.js 真的能在开机时把主题定下来 ----
+     这个文件是整个「不闪一下白底」的关键，但它跑在渲染之前、用的是另一套
+     存储，冒烟测试的假 DOM 摸不到它。所以单独用一个新的沙盒跑一遍真源码。 */
+  function bootWith(mirrorValue, dark) {
+    const root = { dataset: {}, style: {} };
+    const ctx = {
+      console,
+      document: { documentElement: root },
+      window: { matchMedia: q => ({ matches: String(q).includes('dark') ? dark : false }) },
+      localStorage: { getItem: () => mirrorValue },
+    };
+    vm.createContext(ctx);
+    vm.runInContext(BOOT_SRC, ctx);
+    return root;
+  }
+
+  check('镜像里是深色 → 开机就是深色', bootWith('dark', false).dataset.theme, 'dark');
+  check('镜像里是松林 → 开机就是松林', bootWith('forest', false).dataset.theme, 'forest');
+  check('镜像是空的 → 开机是默认主题', bootWith(null, false).dataset.theme, 'paper');
+  check('镜像里是不认识的值 → 开机还是默认主题', bootWith('nope', false).dataset.theme, 'paper');
+  check('镜像里是 system、系统深色 → 开机是深色', bootWith('system', true).dataset.theme, 'dark');
+  check('镜像里是 system、系统浅色 → 开机是浅色', bootWith('system', false).dataset.theme, 'light');
+  check('开机顺手把 color-scheme 也定了（深色）',
+    bootWith('ink', false).style.colorScheme, 'dark');
+  check('  浅色主题是 light', bootWith('paper', false).style.colorScheme, 'light');
+
+  /* ---- 静态：CSS 的主题块 ---- */
+  const blocks = [...CSS_SRC.matchAll(/html\[data-theme="([a-z]+)"\]\s*\{([\s\S]*?)\}/g)]
+    .map(m => ({ id: m[1], body: m[2].replace(/\/\*[\s\S]*?\*\//g, '') }));
+
+  check('CSS 里有五个主题块（system 不在 CSS 里，它是被解析掉的）',
+    blocks.map(b => b.id).sort(), ['dark', 'forest', 'ink', 'light', 'paper']);
+  check('app.js 的主题清单和 CSS 里的主题块对得上',
+    blocks.map(b => b.id).sort(), [...T.THEME_IDS].sort());
+
+  // 只数**声明**（`--rgb-xxx:` 开头），不能数 `--rgb-` 出现的次数 ——
+  // :root 里那些派生的 `rgb(var(--rgb-ink))` 也算一次出现，全数进去会得到
+  // 45 这种数字，然后这条断言就永远红着，谁也不会再看它一眼。
+  const countTriplets = css => (css.match(/^\s*--rgb-[a-z-]+\s*:/gm) || []).length;
+  const rootBody = (/:root\s*\{([\s\S]*?)\n\}/.exec(CSS_SRC) || [, ''])[1];
+  const rootCount = countTriplets(rootBody);
+  check(':root 里的三元组数量', rootCount > 0, true);
+  check('每个主题覆盖的三元组和 :root 一样多（少一个就有一块颜色不跟着变）',
+    blocks.map(b => countTriplets(b.body)),
+    blocks.map(() => rootCount));
+
+  // 主题块里写具体的 rgba / 十六进制，等于把那块颜色钉死 —— 换肤时它不变，
+  // 而且不报错，只能靠眼睛在真机上一个主题一个主题地看。
+  check('主题块里没有写死的 rgba / 十六进制色',
+    blocks.filter(b => /rgba\(|#[0-9a-fA-F]{3,8}\b/.test(b.body)).map(b => b.id), []);
+
+  /* ---- 静态：预加载 ---- */
+  check('theme-boot.js 在 <head> 里',
+    HTML_SRC.indexOf('theme-boot.js') < HTML_SRC.indexOf('</head>'), true);
+  check('  而且在 style.css 之后（放前面等于白做）',
+    /rel="stylesheet" href="style\.css"[\s\S]*?<script src="theme-boot\.js"/.test(HTML_SRC), true);
+  check('  而且在 app.js 之前',
+    HTML_SRC.indexOf('theme-boot.js') < HTML_SRC.indexOf('src="app.js"'), true);
+  check('没有内联 script（MV3 的 CSP 是 script-src self，内联一律不执行）',
+    /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/.test(HTML_SRC), false);
+  // 去掉注释再扫：文件顶上的说明里**讲到了** chrome.storage，那是解释为什么
+  // 不用它。不剥注释的话这条守卫只会被自己的注释点着，永远红。
+  const BOOT_CODE = BOOT_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  check('theme-boot.js 不碰 chrome.storage（它是异步的，来不及赶上第一帧）',
+    /chrome\.storage/.test(BOOT_CODE), false);
+
+  const bootIds = ((/var THEME_IDS = \[([^\]]*)\]/.exec(BOOT_SRC) || [, ''])[1])
+    .split(',').map(s => s.trim().replace(/['"]/g, '')).filter(Boolean);
+  check('theme-boot.js 的主题清单和 app.js 一致（少一个就会白闪一下）',
+    bootIds, T.THEME_IDS);
+
+  /* ---- 静态：设置面板里的下拉 ---- */
+  const optValues = [...HTML_SRC.matchAll(/<option value="([a-z]+)"[^>]*data-i18n="theme\.[a-z]+"/g)]
+    .map(m => m[1]);
+  check('下拉里的选项覆盖全部主题 + 跟随系统',
+    optValues.sort(), [...T.THEME_IDS, T.THEME_SYSTEM].sort());
+  check('每个选项的名字都走文案表（不许在 JS 里拿选项文字做判断）',
+    optValues.length, T.THEME_IDS.length + 1);
+
+  const themeKeys = [...T.THEME_IDS, T.THEME_SYSTEM].map(id => 'theme.' + id);
+  check('每个主题的中英文案都在表里',
+    themeKeys.filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
+  check('设置面板里那两行主题文案也在表里',
+    ['settings.theme.name', 'settings.theme.desc']
+      .filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -1518,6 +1742,7 @@ async function part11() {
   part9();
   part10();
   await part11();
+  await part12();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

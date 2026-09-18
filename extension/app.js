@@ -2268,6 +2268,92 @@ async function renderStaticDashboard() {
 }
 
 /* ----------------------------------------------------------------
+   主题色
+
+   配色本身在 style.css 里：每个主题只覆盖十几个 `--rgb-*` 三元组，
+   实色和那些半透明的淡色块都是从三元组派生的，会自己跟着变。
+   这里只负责「选了哪个 → 往 <html data-theme> 上写什么」。
+
+   ⚠️ 「跟随系统」不是一种配色，是一条指令。它在 resolveTheme 里就解析成
+   light 或 dark，所以 CSS 里没有 system 这一套，存储里却可以留着它
+   （留着才能在设置面板里把选中项显示回「跟随系统」）。
+
+   ⚠️ 这几个常量必须排在 UI_PREFS_DEFAULTS **前面**：默认值里要用到
+   DEFAULT_THEME，而 const 有暂时性死区，放到后面会直接抛 ReferenceError。
+   ---------------------------------------------------------------- */
+
+/** 主题清单 —— 必须和 theme-boot.js 里的 THEME_IDS 一致（冒烟测试有断言） */
+const THEME_IDS = ['paper', 'light', 'dark', 'forest', 'ink'];
+const THEME_SYSTEM  = 'system';
+const DEFAULT_THEME = 'paper';
+
+/** 深色主题有哪些。用来设 color-scheme，让滚动条之类的原生控件也跟着变 */
+const DARK_THEME_IDS = ['dark', 'forest', 'ink'];
+
+/** localStorage 里的镜像键 —— 给 theme-boot.js 预读用（同步，防白闪） */
+const THEME_MIRROR_KEY = 'guilong.theme';
+
+function isDarkTheme(id) { return DARK_THEME_IDS.indexOf(id) !== -1; }
+
+/** 系统现在要深还是要浅 */
+function systemPrefersDark() {
+  try {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  } catch (err) {
+    return false;
+  }
+}
+
+/** 存的值 → 存的值。'system' 原样留着，不认识的回默认（不认识的不能写进存储） */
+function normalizeTheme(pref) {
+  if (pref === THEME_SYSTEM) return THEME_SYSTEM;
+  return THEME_IDS.indexOf(pref) !== -1 ? pref : DEFAULT_THEME;
+}
+
+/** 存的值 → 真正画出来的主题。'system' 在这里被解析掉，非法值回默认 */
+function resolveTheme(pref) {
+  if (pref === THEME_SYSTEM) return systemPrefersDark() ? 'dark' : 'light';
+  return THEME_IDS.indexOf(pref) !== -1 ? pref : DEFAULT_THEME;
+}
+
+/**
+ * 读一个设置控件当前的值。
+ *
+ * 开关读 checked，下拉读 value —— select 身上根本没有 checked，一律读
+ * checked 的话选主题会得到 undefined，存进去再转成字符串就是 "undefined"，
+ * 然后每次开新标签页都被当成不认识的值退回默认。抽成函数是因为它写在
+ * 事件监听器里面就测不到，而这类「读错了属性」的 bug 是最安静的那种。
+ */
+function readSettingValue(el) {
+  if (!el) return false;
+  return el.tagName === 'SELECT' ? el.value : !!el.checked;
+}
+
+/** 把主题写到 <html> 上。返回真正画出来的那个 id */
+function paintTheme(pref) {
+  const id = resolveTheme(pref);
+  const root = document.documentElement;
+  root.dataset.theme = id;
+  root.style.colorScheme = isDarkTheme(id) ? 'dark' : 'light';
+  return id;
+}
+
+/**
+ * 把主题镜像到 localStorage。
+ *
+ * chrome.storage 是异步的，等它读出来页面早就画完第一帧了 —— 深色主题会
+ * 先闪一下米白。theme-boot.js 在 <head> 里同步读这个镜像，所以这里每次
+ * 改主题都要同步写一份。存不进去（存储被禁）就算了，最坏只是闪一下。
+ */
+function mirrorTheme(pref) {
+  try {
+    localStorage.setItem(THEME_MIRROR_KEY, normalizeTheme(pref));
+  } catch (err) {
+    /* 存不了不影响当前这一页，忽略 */
+  }
+}
+
+/* ----------------------------------------------------------------
    新标签页模块开关 + 搜索框
 
    开关只控制「显示不显示」，**绝不删数据** —— 关掉站点条之后，pinnedSites 和
@@ -2279,6 +2365,7 @@ const UI_PREFS_DEFAULTS = {
   showQuickSites: true,   // 常用站点条
   showSearchBox:  true,   // 搜索框
   showWeather:    true,   // 当地天气（默认地点见 DEFAULT_WEATHER_LOCATION）
+  theme:          DEFAULT_THEME,  // 主题色 —— 字符串，不是开关（见「主题」一节）
 };
 
 /**
@@ -2296,7 +2383,17 @@ async function getUiPrefs() {
 async function setUiPref(key, value) {
   if (!(key in UI_PREFS_DEFAULTS)) return;   // 只认自己声明过的开关
   const prefs = await getUiPrefs();
-  prefs[key] = !!value;
+
+  // ⚠️ 按默认值的类型定型，不能一律 !!value。下拉框存的是字符串，
+  // 一转布尔主题就变成 true，读回来既不认识也回不到默认 —— 页面会一直
+  // 停在纸感上，而存储里写着 true，看代码看不出毛病。
+  prefs[key] = typeof UI_PREFS_DEFAULTS[key] === 'boolean' ? !!value : String(value);
+
+  if (key === 'theme') {
+    prefs.theme = normalizeTheme(prefs.theme);
+    mirrorTheme(prefs.theme);   // 同步镜像，下次开新标签页才不会闪一下
+  }
+
   await chrome.storage.local.set({ [UI_PREFS_KEY]: prefs });
 }
 
@@ -2314,13 +2411,20 @@ async function applyUiPrefs() {
   // 关掉再打开，还是你之前选的那个城市，温度也不用重新等一次网络。
   applyWeatherVisibility(prefs);
 
-  // 开关自己的勾选状态也要跟上，否则重开页面时勾的位置和实际情况不符
-  document.querySelectorAll('input[data-setting]').forEach(input => {
-    const key = input.dataset.setting;
-    if (key in prefs) input.checked = !!prefs[key];
+  // 主题：先画再存镜像。存的值可能是 system，真画出来的是 light/dark。
+  const themeId = paintTheme(prefs.theme);
+  mirrorTheme(prefs.theme);
+
+  // 控件自己的状态也要跟上，否则重开页面时勾的位置和实际情况不符
+  document.querySelectorAll('[data-setting]').forEach(el => {
+    const key = el.dataset.setting;
+    if (!(key in prefs)) return;
+    // 开关读 checked，下拉读 value —— select 身上没有 checked，读它永远是 false
+    if (el.tagName === 'SELECT') el.value = String(prefs[key]);
+    else el.checked = !!prefs[key];
   });
 
-  return prefs;
+  return { ...prefs, themeId };
 }
 
 /* ----------------------------------------------------------------
@@ -3510,7 +3614,10 @@ document.addEventListener('change', async (e) => {
   const input = e.target;
   if (!input || !input.dataset || !input.dataset.setting) return;
 
-  await setUiPref(input.dataset.setting, input.checked);
+  const key = input.dataset.setting;
+  const value = readSettingValue(input);
+
+  await setUiPref(key, value);
   await applyUiPrefs();
 
   // 站点条从「关」切回「开」时要补一次渲染 —— 关着的时候根本没画过
@@ -3524,6 +3631,26 @@ document.addEventListener('change', async (e) => {
     await renderWeather();
   }
 });
+
+// ---- 主题选了「跟随系统」时，系统的深浅色一变就跟着换 ----
+// 只重画主题，不动仪表盘：开关状态、站点条、天气都不需要重来一遍。
+try {
+  if (window.matchMedia) {
+    const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSchemeChange = async () => {
+      const prefs = await getUiPrefs();
+      if (prefs.theme === THEME_SYSTEM) {
+        paintTheme(THEME_SYSTEM);
+        mirrorTheme(THEME_SYSTEM);
+      }
+    };
+    // addEventListener 是较新的写法；老一点的 Safari 只有 addListener。
+    if (darkQuery.addEventListener) darkQuery.addEventListener('change', onSchemeChange);
+    else if (darkQuery.addListener) darkQuery.addListener(onSchemeChange);
+  }
+} catch (err) {
+  /* 拿不到系统设置就不跟，保持当前主题 */
+}
 
 // ---- 搜索框：回车提交 ----
 document.addEventListener('submit', (e) => {

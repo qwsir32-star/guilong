@@ -10,6 +10,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" data-page-node-id="CFc4Hp68vd7AVLfPhsoA65">
 
   <link rel="stylesheet" href="style.css" data-page-node-id="E14MAEXrzgWRYkK3D2RIiA">
+
+  <!-- 主题预加载 —— 必须在 style.css 之后、页面画出第一帧之前同步跑完，
+       否则深色主题每开一个新标签页都会先闪一下米白。详见文件里的注释。 -->
+  <script src="theme-boot.js" data-page-node-id="T1H3m3B00t"></script>
 </head>
 <body data-page-node-id="MPDVj6Kz1F5GxUbqbgwboN">
 <div class="container" data-page-node-id="0nkMwCB0rkx1ed156ZTHiS">
@@ -81,6 +85,24 @@
        ================================================================ -->
   <div class="settings-panel" id="settingsPanel">
     <p class="settings-title" data-i18n="settings.title"></p>
+
+    <!-- 主题色 —— 下拉而不是开关，所以整行用 label：点文字也能唤出下拉。
+         option 的文字走文案表（data-i18n），value 是主题 id，别在 JS 里
+         拿 option 的文字做判断（翻译之后就认不出来了）。 -->
+    <label class="setting-row" data-page-node-id="T1H3m3Th3m3R0w">
+      <span class="setting-text">
+        <span class="setting-name" data-i18n="settings.theme.name"></span>
+        <span class="setting-desc" data-i18n="settings.theme.desc"></span>
+      </span>
+      <select class="setting-select" data-setting="theme" data-page-node-id="T1H3m3Th3m3S3l">
+        <option value="paper"  data-i18n="theme.paper"></option>
+        <option value="light"  data-i18n="theme.light"></option>
+        <option value="dark"   data-i18n="theme.dark"></option>
+        <option value="forest" data-i18n="theme.forest"></option>
+        <option value="ink"    data-i18n="theme.ink"></option>
+        <option value="system" data-i18n="theme.system"></option>
+      </select>
+    </label>
 
     <label class="setting-row">
       <span class="setting-text">

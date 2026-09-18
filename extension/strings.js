@@ -112,6 +112,17 @@ const STRINGS = {
     'settings.weatherPlace.search':  '搜索',
     'settings.weatherPlace.empty':   '城市库里没有 —— 只收录中国省、市两级行政区，换个写法试试',
 
+    /* ---- 主题 ----
+       主题名是界面上的选项名，走表；主题的配色在 style.css 里。 */
+    'settings.theme.name':   '主题色',
+    'settings.theme.desc':   '换配色。「跟随系统」会跟着电脑的深浅色设置走。',
+    'theme.paper':           '纸感（默认）',
+    'theme.light':           '浅色',
+    'theme.dark':            '深色',
+    'theme.forest':          '松林',
+    'theme.ink':             '墨蓝',
+    'theme.system':          '跟随系统',
+
     /* ---- 区块标题 ---- */
     'section.openTabs':        '打开的标签页',
     'section.savedForLater':   '稍后再看',
@@ -280,6 +291,15 @@ const STRINGS = {
     'settings.weatherPlace.input':   'Type a city name and press Enter (China, province/city)',
     'settings.weatherPlace.search':  'Search',
     'settings.weatherPlace.empty':   'Not in the built-in list (China, province & city level) — try another spelling',
+
+    'settings.theme.name':   'Theme',
+    'settings.theme.desc':   'Change the colour scheme. "Follow system" tracks your computer’s light/dark setting.',
+    'theme.paper':           'Paper (default)',
+    'theme.light':           'Light',
+    'theme.dark':            'Dark',
+    'theme.forest':          'Forest',
+    'theme.ink':             'Ink',
+    'theme.system':          'Follow system',
 
     'section.openTabs':        'Open tabs',
     'section.savedForLater':   'Saved for later',
