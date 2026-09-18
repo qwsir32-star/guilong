@@ -31,6 +31,7 @@
  *   PART 17 界面语言（中英切换 / 默认跟随系统 / 标题走文案表）
  *   PART 18 设置面板是居中悬浮的模态（<dialog> + showModal + 背板虚化）
  *   PART 19 index.html 里不许写死界面文案（补上 PART 9 只扫 app.js 的缺口）
+ *   PART 20 出网主机白名单（图标一律本地读盘，不许再有第三个联网的地方）
  */
 const fs = require('fs');
 const path = require('path');
@@ -632,12 +633,17 @@ async function part3() {
   // --- 图标：留空自动 / 图片地址 / 文字 ---
   let ico = T.resolveSiteIcon({ url: 'https://github.com/', icon: '' }, 'GitHub');
   check('图标留空 → 自动 favicon', ico.img.startsWith(`chrome-extension://${EXT_ID}/_favicon/`), true);
-  check('图标留空 → 带回退 host',   ico.host, 'github.com');
   check('图标留空 → 首字母',        ico.letter, 'G');
 
   ico = T.resolveSiteIcon({ url: 'https://a.com/', icon: 'https://cdn.example/logo.png' }, 'A站');
   check('图标填图片地址 → 用这张图', ico.img, 'https://cdn.example/logo.png');
-  check('自定义图不回退 s2',        ico.host, '');
+
+  // 返回值里**不再有 host** —— 它当年只为「失败兜底去问 google s2」而存在。
+  // 兜底改成直接删图之后 host 就是死字段，留着等于给那个洞留一条随时能接回去
+  // 的线。这里守的是结构（字段都没了，谁也别想顺手把它接回来）。
+  const shape = T.resolveSiteIcon({ url: 'https://github.com/', icon: '' }, 'GitHub');
+  check('图标解析结果里没有 host 字段（兜底不再需要域名）',
+    ['host' in shape, Object.keys(shape).sort()], [false, ['img', 'letter']]);
 
   ico = T.resolveSiteIcon({ url: 'https://a.com/', icon: '播' }, '某某');
   check('图标填文字 → 无 img',      ico.img, '');
@@ -2591,6 +2597,102 @@ function part19() {
     ['footer.brand' in S.STRINGS.zh, 'footer.brand' in S.STRINGS.en], [true, true]);
 }
 
+/* =================================================================
+   PART 20 — 扩展里不许再冒出「第三个联网的地方」
+
+   2026-09-19 用全新 profile 真跑 Chrome 时抓出来的：app.js 里**四处**图标
+   地址直连 `google.com/s2/favicons`。其中三处（卡片里的 chip / 展开的 chip /
+   稍后再看）都不是「失败了才退」——它们**一上来就问 Google**。而 chip 代表的
+   是当前开着的标签页，等于每开一次新标签页就向 Google 报一遍你在逛哪些站。
+
+   PRIVACY.md 第 64 行其实早就把判据写下来了：「为了一张图标去访问站点自己的
+   服务器，会把『唯一一次联网』这句话戳破，不值得。」只是代码没跟上 ——
+   这是文档和代码长期说两套话，不是漏网之鱼。
+
+   ⚠️ 判据**不能只盯 google s2**。那只堵住这一个洞，换一家图标服务照样漏。
+   改成**白名单**：把 extension/ 里所有绝对 URL 的主机名抓出来，逐个对照一张
+   写死的名单。名单外多出任何一个主机名，这里就是红的 —— 要加可以，但必须
+   有人**明确把它写进名单**，也就是明确承认「又开了一个联网的地方」。
+
+   ⚠️ 扫之前必须剥注释。本项目注释里到处是「不去 Google Fonts」「别退 s2」
+   这类说明，不剥的话守卫从第一天就是红的。
+
+   ⚠️ 名单分两栏：「真联网」和「拼出来但出不了网」不许混在一起 —— 混了就没人
+   知道到底哪几个是真会发请求的。
+   ================================================================= */
+
+// 真正会发请求出去的主机（有且仅有这三个）
+const OUTBOUND_HOSTS = [
+  'api.open-meteo.com',   // 天气。用户可以在设置里关掉
+  'www.bing.com',         // 搜索兜底，只在用户主动搜索且拿不到默认引擎时
+  'github.com',           // 页脚指向仓库的链接，要用户自己点
+];
+
+// 出现在代码里、但一个包都发不出去的主机
+const NON_NETWORK_HOSTS = [
+  'www.w3.org',                     // SVG 命名空间。它是标识符，不是地址
+  'guilong-no-such-site.invalid',   // 探测「默认地球图」的假域名，喂给 _favicon
+];
+
+function part20() {
+  console.log('\n[PART 20] 扩展里没有第三个联网的地方（出网主机白名单）');
+
+  const files = [
+    ...fs.readdirSync(EXT).filter(f => /\.(js|html|css)$/.test(f)),
+    'fonts/fonts.css',   // 在子目录里，不在上面这次浅扫的范围内，单独带上
+  ];
+
+  const hosts = new Set();
+  for (const f of files) {
+    const src = stripComments(fs.readFileSync(path.join(EXT, f), 'utf8'));
+    for (const m of src.matchAll(/https?:\/\/([A-Za-z0-9.-]+)/g)) {
+      hosts.add(m[1].toLowerCase());
+    }
+  }
+
+  const known   = [...OUTBOUND_HOSTS, ...NON_NETWORK_HOSTS];
+  const unknown = [...hosts].filter(h => !known.includes(h)).sort();
+  check('extension/ 里的绝对 URL 主机全在名单里（多一个就是多一处联网）', unknown, []);
+
+  // 名单别写歪：3 个真联网 + 2 个不出网
+  check('  名单是 3 个真联网 + 2 个不出网',
+    [OUTBOUND_HOSTS.length, NON_NETWORK_HOSTS.length], [3, 2]);
+  // 也别空转：名单里列着的主机必须真的还在源码里，否则是「守着一个已经拆掉的洞」
+  check('  名单里的主机确实都还在源码里（不是守着一个拆掉的洞）',
+    known.filter(h => !hosts.has(h)), []);
+
+  const APP_SRC = stripComments(fs.readFileSync(APP, 'utf8'));
+
+  // 单独再点一次名：这是这次真正修掉的洞，回归时想一眼看到它
+  check('没有 google 图标服务（s2 / gstatic）',
+    /google\.com\/s2|gstatic/.test(APP_SRC), false);
+
+  // 三处 `const faviconUrl = ...` 必须全部走本地端点。
+  // 期望值写死成三个 true：一处都不剩时数组对不上，也不会假绿。
+  const assigns = APP_SRC.match(/const faviconUrl\s*=\s*[^;]+;/g) || [];
+  check('三处 chip / 稍后再看 的图标都走 faviconUrlFor（本地读盘）',
+    assigns.map(a => /faviconUrlFor\(/.test(a)), [true, true, true]);
+
+  // 空串不许进 <img src>：Firefox 上 faviconUrlFor 返回 ''，
+  // 而 `src=""` 会被解析成「当前页面地址」去加载，比不显示图标更糟。
+  //
+  // ⚠️ 不能只搜 `src="${faviconUrl}"` —— 加了守卫的写法里**照样**有这一段
+  //（守卫在外层：`${faviconUrl ? \`<img ...\` : ''}`）。要数两边的出现次数：
+  // 出现几段 src 就得有几处 `faviconUrl ?`，多出来的那个就是裸写。
+  const srcSites = (APP_SRC.match(/src="\$\{faviconUrl\}"/g) || []).length;
+  const guarded  = (APP_SRC.match(/faviconUrl \? `<img/g) || []).length;
+  check('三处 src="${faviconUrl}" 都套了「空串就不建 <img>」的守卫',
+    [srcSites, guarded], [3, 3]);
+
+  // 兜底函数只剩删图。⚠️ 先把函数块切出来再判 —— 跨块正则一路匹配到后面
+  // 的代码就会把「后面某处没有 img.src」当成「这个函数干净」。
+  const fbBlock = (APP_SRC.match(/function handleFaviconError\(img\)\s*\{[\s\S]*?\n\}/) || [''])[0];
+  check('切出了 handleFaviconError 的函数体（否则下面那条是假绿）',
+    fbBlock.length > 0, true);
+  check('  函数体只剩删图：有 img.remove()，不碰 img.src',
+    [/img\.remove\(\)/.test(fbBlock), /img\.src/.test(fbBlock)], [true, false]);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -2612,6 +2714,7 @@ function part19() {
   part17();
   part18();
   part19();
+  part20();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

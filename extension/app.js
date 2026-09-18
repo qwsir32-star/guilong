@@ -682,22 +682,24 @@ function siteLabel(site) {
  *   http(s) 地址  → 用这张图
  *   1-2 个字符    → 拿文字当图标
  *
- * @returns {{ img: string, letter: string, host: string }}
- *          host 只在自动 favicon 时才给（失败要退到 google s2 才需要它）
+ * @returns {{ img: string, letter: string }}
+ *          这里**不再返回 host**：host 当年只是为了让失败兜底去问 google s2。
+ *          兜底改成「直接删图、露色块」之后它就是死字段，留着等于给这个洞
+ *          留一条随时能接回去的线，索性拆掉。
  */
 function resolveSiteIcon(site, label) {
   const icon  = (site.icon || '').trim();
   const first = ((label || '?').match(/[A-Za-z0-9\u4e00-\u9fa5]/) || ['?'])[0].toUpperCase();
 
   if (!icon) {
-    return { img: faviconUrlFor(site.url, 32), letter: first, host: hostnameOf(site.url) };
+    return { img: faviconUrlFor(site.url, 32), letter: first };
   }
   if (/^https?:\/\//i.test(icon)) {
-    // 自定义图挂了就直接删掉，别退 s2 —— 那是给站点 favicon 用的服务，
-    // 拿它去查这张自定义图的域名只会得到一张更不相干的图。
-    return { img: icon, letter: first, host: '' };
+    // 自定义图挂了就直接删掉（见 handleFaviconError），不去别处再找一张 ——
+    // 拿这张图的域名去问图标服务，只会得到一张更不相干的图。
+    return { img: icon, letter: first };
   }
-  return { img: '', letter: icon.slice(0, 2), host: '' };
+  return { img: '', letter: icon.slice(0, 2) };
 }
 
 /**
@@ -714,7 +716,7 @@ function resolveSiteIcon(site, label) {
  * 地址同样不能拼 `chrome-extension://`（Firefox 是 moz-extension://）。
  *
  * 注意它「读不到」的两种表现完全不同：
- *   - 真出错（比如 URL 压根不合法）→ 图片 onerror，退到 google s2，再退首字母色块
+ *   - 真出错（比如 URL 压根不合法）→ 图片 onerror，直接把 <img> 删掉，露首字母色块
  *   - 本地没有这个站的缓存 → **返回一张默认地球图，不报错**
  * 第二种才是「有的网站怎么没有图标」的常见原因，靠 dropIfDefaultFavicon 处理。
  *
@@ -728,21 +730,19 @@ function faviconUrlFor(url, size = 32) {
 /**
  * handleFaviconError(img) — favicon 加载失败时的兜底
  *
- * 第一步退到 google s2，第二步直接删掉 <img>，露出底下那层首字母色块
- * （没有色块的地方就是干净地什么都不显示，不会留个「破图」）。
+ * 直接删掉 <img>，露出底下那层首字母色块（没有色块的地方就是干净地什么都不
+ * 显示，不会留个「破图」）。
+ *
+ * ⚠️ **一步都不往图标服务退。** 这里曾经退到 google s2，代价是每开一次新标签页
+ * 就有一批图标请求打到 Google —— 而 PRIVACY.md 写的是「整个扩展唯一一次联网」
+ * 是天气。为一张 16px 的图去联网不值得，本地读不到就露色块。（这条判据是
+ * PRIVACY.md 自己论证的，代码之前没跟上。）
  *
  * 注意：**不能**写成 HTML 里的 onerror="..." —— MV3 扩展页面的默认 CSP 是
  * `script-src 'self'`，内联事件处理器会被拦掉（控制台报 Refused to execute
  * inline event handler），兜底等于没有。所以统一在渲染后用 JS 挂 onerror 属性。
  */
 function handleFaviconError(img) {
-  const host = img.dataset.host;
-
-  if (img.dataset.fb !== '1' && host) {
-    img.dataset.fb = '1';
-    img.src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`;
-    return;
-  }
   img.remove();
 }
 
@@ -1638,9 +1638,10 @@ function buildOverflowChips(hiddenTabs, urlCounts = {}) {
     const chipClass = count > 1 ? ' chip-has-dupes' : '';
     const safeUrl   = (tab.url || '').replace(/"/g, '&quot;');
     const safeTitle = label.replace(/"/g, '&quot;');
-    let domain = '';
-    try { domain = new URL(tab.url).hostname; } catch {}
-    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    // 走 _favicon（本地读盘）。这里以前直连 google s2 —— 而 chip 代表的是
+    // **当前开着的标签页**，等于每开一次新标签页就向 Google 报一遍你在逛哪些站。
+    // 现在还顺带修了个不一致：大图标读本地、小 chip 读 Google，同一个域名两个来源。
+    const faviconUrl = faviconUrlFor(tab.url, 16);
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
       ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" data-favicon>` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
@@ -1722,9 +1723,7 @@ function renderDomainCard(group) {
     const chipClass = count > 1 ? ' chip-has-dupes' : '';
     const safeUrl   = (tab.url || '').replace(/"/g, '&quot;');
     const safeTitle = label.replace(/"/g, '&quot;');
-    let domain = '';
-    try { domain = new URL(tab.url).hostname; } catch {}
-    const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=16` : '';
+    const faviconUrl = faviconUrlFor(tab.url, 16);
     return `<div class="page-chip clickable${chipClass}" data-action="focus-tab" data-tab-url="${safeUrl}" title="${safeTitle}">
       ${faviconUrl ? `<img class="chip-favicon" src="${faviconUrl}" alt="" data-favicon>` : ''}
       <span class="chip-text">${label}</span>${dupeTag}
@@ -1861,7 +1860,10 @@ async function renderDeferredColumn() {
 function renderDeferredItem(item) {
   let domain = '';
   try { domain = new URL(item.url).hostname.replace(/^www\./, ''); } catch {}
-  const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=16`;
+  // 图标同样走 _favicon（本地读盘），理由见 handleFaviconError。
+  // ⚠️ 必须判空再建 <img>：Firefox 上这里返回空串，而 `src=""` 会被解析成
+  // 当前页面地址去加载，比不显示图标更糟。
+  const faviconUrl = faviconUrlFor(item.url, 16);
   const ago = timeAgo(item.savedAt);
 
   return `
@@ -1869,7 +1871,7 @@ function renderDeferredItem(item) {
       <input type="checkbox" class="deferred-checkbox" data-action="check-deferred" data-deferred-id="${item.id}">
       <div class="deferred-info">
         <a href="${item.url}" target="_blank" rel="noopener" class="deferred-title" title="${(item.title || '').replace(/"/g, '&quot;')}">
-          <img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" data-favicon>${item.title || item.url}
+          ${faviconUrl ? `<img src="${faviconUrl}" alt="" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px" data-favicon>` : ''}${item.title || item.url}
         </a>
         <div class="deferred-meta">
           <span>${domain}</span>
@@ -1958,7 +1960,7 @@ async function renderQuickSites() {
  */
 function renderQuickSite(site) {
   const label     = siteLabel(site);
-  const { img, letter, host } = resolveSiteIcon(site, label);
+  const { img, letter } = resolveSiteIcon(site, label);
   const safeLabel = escapeAttr(label);
   const safeUrl   = escapeAttr(site.url);
 
@@ -1986,7 +1988,7 @@ function renderQuickSite(site) {
               title="${escapeAttr(T('pin.openTooltip', { label, url: site.url }))}">
         <span class="quick-site-icon">
           <span class="quick-site-letter${letter.length > 1 ? ' is-text' : ''}">${escapeAttr(letter)}</span>
-          ${img ? `<img src="${escapeAttr(img)}" data-favicon${host ? ` data-host="${escapeAttr(host)}"` : ''} alt="">` : ''}
+          ${img ? `<img src="${escapeAttr(img)}" data-favicon alt="">` : ''}
         </span>
         <span class="quick-site-label">${safeLabel}</span>
       </button>
