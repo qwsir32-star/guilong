@@ -275,6 +275,17 @@ function check(label, actual, expected) {
   );
 }
 
+/* 扫源码前先剥注释 —— 说明文字里提到 chrome://、https:// 会被自己的守卫点着，
+   永远红。（`//` 前面那个 `[^:'"\\]` 是为了放过 http:// 里的那两个斜杠。） */
+function stripComments(s) {
+  return s
+    .replace(/\/\*[\s\S]*?\*\//g, '')     // /* */   CSS / JS
+    .replace(/<!--[\s\S]*?-->/g, '')      // <!-- -->  HTML —— 少了这一条，
+                                          // index.html 里解释「为什么自托管」的
+                                          // 那段注释会被自己的守卫点着
+    .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+}
+
 /* ---------------- 加载 strings.js + app.js ----------------
    **strings.js 必须先加载。** app.js 在模块顶层就会用到 T()：
    FRIENDLY_DOMAINS 里那条 'local-files' 是 T('section.localFiles')，
@@ -2041,9 +2052,7 @@ async function part14() {
   }
 
   // ---- 静态：三家地址都不许再写死在源码 / 文案里 ----
-  const strip = s => s
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+  const strip = stripComments;
 
   /* envOf() / bgEnv() 里那份「拿不到 env.js 时的兜底」按定义就得写死 Chromium
      的地址 —— 那是**唯一**合法的例外。扫之前先把这两个函数体挖掉，
@@ -2121,6 +2130,87 @@ async function part14() {
     ENV_SRC.includes('hasFaviconEndpoint') && ENV_SRC.includes('browserNewtabUrls'), true);
 }
 
+/* ==================================================================
+   PART 15 — 字体自托管（Mac / Windows 一致 + 零网络请求）
+
+   原来 index.html 挂着一条 fonts.googleapis.com 的 <link>：每开一个新标签页
+   就往 Google 发一次请求，跟「唯一的对外请求是天气」这句话对不上；国内拉不到
+   时 Mac 回退苹方、**Windows 回退微软雅黑/宋体** —— 同一个扩展两个系统长得
+   不一样。现在字体随包走（extension/fonts/），两个系统的拉丁部分完全一致。
+
+   汉字仍然用各系统自己的字体（苹方 / 微软雅黑）—— 包一个能看的中文字体
+   10 MB 起，不值。代价是汉字在两个系统上仍是两种字体，但**都落在各自
+   最好看的那个上**，而不是回退出来的那个。
+
+   这一组守三件事：
+     ① 页面里不许再有任何外链（零网络请求这条承诺要能被机器验证）；
+     ② 字体文件真的在包里、且是真 woff2（少一张只会静默掉回系统字体）；
+     ③ 两条字体栈里的**中文字体必须一致** —— 一条用苹方、一条用宋体的话，
+        Mac 和 Windows 就又不一样了，而这种错肉眼很难发现。
+   ================================================================== */
+function part15() {
+  console.log('\n[PART 15] 字体自托管（跨平台一致 + 零网络请求）');
+
+  const HTML_SRC = fs.readFileSync(path.join(EXT, 'index.html'), 'utf8');
+  const CSS_SRC  = fs.readFileSync(path.join(EXT, 'style.css'), 'utf8');
+  const FONTS    = path.join(EXT, 'fonts');
+
+  /* ---- ① 页面里不许有任何外链 ----
+     天气是**唯一**允许联网的地方，而它走的是 app.js 里的 fetch，
+     不是页面上的 <link>/<script>/<img>。所以 HTML 里出现任何 http(s) 都是退步。 */
+  // 只扫**会真的发请求**的那几种引用：<link href> / <script src> / <img src>。
+  // 不能见 http:// 就抓：内联 SVG 的 xmlns 和页脚那个 <a href> 都不是请求。
+  const htmlCode = stripComments(HTML_SRC);
+  const remoteRefs = htmlCode.match(
+    /<(?:link|script|img|iframe|source)\b[^>]*?(?:href|src)\s*=\s*["']https?:\/\/[^"']+/gi) || [];
+  check('index.html 里没有任何外链资源（字体已自托管）', remoteRefs, []);
+  check('  行内样式里也没有 url(https://…)',
+    /url\(\s*['"]?https?:/.test(htmlCode), false);
+  check('  没有 fonts.googleapis.com',
+    htmlCode.includes('fonts.googleapis.com'), false);
+  check('  没有 fonts.gstatic.com',
+    htmlCode.includes('fonts.gstatic.com'), false);
+  check('  引的是本地那份 fonts.css',
+    /<link rel="stylesheet" href="fonts\/fonts\.css">/.test(HTML_SRC), true);
+
+  /* ---- ② 字体文件真的在、且是真 woff2 ---- */
+  check('extension/fonts/ 目录在', fs.existsSync(FONTS), true);
+  const woff2 = fs.readdirSync(FONTS).filter(f => f.endsWith('.woff2'));
+  check('至少下了两张字体', woff2.length >= 2, true);
+  check('  每张都是真 woff2（魔数 wOF2）',
+    woff2.filter(f => fs.readFileSync(path.join(FONTS, f)).subarray(0, 4).toString('latin1') !== 'wOF2'), []);
+  check('  每张都不是空文件',
+    woff2.filter(f => fs.statSync(path.join(FONTS, f)).size < 1024), []);
+
+  const fontsCss = fs.readFileSync(path.join(FONTS, 'fonts.css'), 'utf8');
+  check('fonts.css 里没有外链',
+    /https?:\/\//.test(stripComments(fontsCss)), false);
+  const srcs = [...fontsCss.matchAll(/url\(['"]?([^'")]+)['"]?\)/g)].map(m => m[1]);
+  check('fonts.css 里每条 src 都指着一个本地文件',
+    srcs.filter(s => !/^[a-z0-9-]+\.woff2$/.test(s)), []);
+  check('  而且这些文件都真的在',
+    srcs.filter(s => !fs.existsSync(path.join(FONTS, s))), []);
+  check('  两个字体都声明了',
+    fontsCss.includes("'DM Sans'") && fontsCss.includes("'Newsreader'"), true);
+  check('  斜体也声明了（CSS 里有 5 处 font-style: italic）',
+    fontsCss.includes('font-style: italic'), true);
+
+  /* ---- ③ 两条字体栈的中文字体必须一致 ---- */
+  const stacks = [...CSS_SRC.matchAll(/font-family:\s*'(DM Sans|Newsreader)'[^;]+;/g)].map(m => m[0]);
+  check('两条字体栈都抓到了（正文 + 标题）', stacks.length >= 2, true);
+
+  // 中文字体名：苹方（Mac）/ 雅黑（Windows）。两条栈必须给出同一个集合。
+  // ⚠️ 长名要排在短名前面：'Microsoft YaHei UI' 会被 'Microsoft YaHei' 先吃掉
+  const CN = /Songti SC|Hiragino Sans GB|STSong|Microsoft YaHei UI|Microsoft YaHei|PingFang SC|SimSun/g;
+  const sets = stacks.map(s => [...new Set(s.match(CN) || [])].sort());
+  check('每条字体栈里都有中文字体（漏了汉字就会掉回默认字体）',
+    sets.filter(s => s.length === 0).length, 0);
+  check('  所有字体栈用的是**同一套**中文字体（不然 Mac / Windows 又不一样了）',
+    [...new Set(sets.map(s => JSON.stringify(s)))].length, 1);
+  check('  具体是哪几个', sets[0] || [],
+    ['Hiragino Sans GB', 'Microsoft YaHei', 'Microsoft YaHei UI', 'PingFang SC']);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -2137,6 +2227,7 @@ async function part14() {
   await part12();
   await part13();
   await part14();
+  part15();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

@@ -55,6 +55,8 @@ Open-Meteo 的响应头带着 `access-control-allow-origin: *`，扩展页可以
 
 **没有**分析、没有遥测、没有广告、没有第三方 SDK、没有 cookie。
 
+界面字体（DM Sans / Newsreader）**随扩展打包**，不从 Google Fonts 或任何 CDN 联网取 —— 所以开新标签页不会向第三方暴露你的 IP。汉字用你系统自己的字体（苹方 / 微软雅黑）。
+
 ## Firefox 版
 
 Firefox 版在 manifest 里显式声明了 `data_collection_permissions: { required: ["none"] }` —— 机器可读的「什么都不收集」。

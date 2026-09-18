@@ -69,8 +69,17 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* 字体栈：拉丁 / 数字走随扩展打包的 DM Sans 与 Newsreader（见 fonts/fonts.css），
+   汉字走各系统自己的 UI 字体 —— 苹方（Mac）/ 微软雅黑（Windows）。
+
+   为什么汉字不一起打包：一个能看的中文字体 10 MB 起，换来的只是两个系统
+   长得一模一样，不值。而现在这样两个系统**都落在各自最好看的那个字体上**，
+   拉丁部分则完全一致 —— 那才是设计真正靠它撑起来的地方。
+
+   ⚠️ 改这两条栈的时候，两条里的中文字体要**始终保持一致**：一条用苹方、
+   另一条用宋体的话，Mac 和 Windows 就又不一样了。有冒烟测试盯着。 */
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   background: var(--paper);
   color: var(--ink);
   min-height: 100vh;
@@ -156,7 +165,7 @@ header {
 }
 
 .header-left h1 {
-  font-family: 'Newsreader', serif;
+  font-family: 'Newsreader', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', serif;
   font-weight: 300;
   font-size: 28px;
   letter-spacing: -0.5px;
@@ -321,7 +330,7 @@ header {
   border: 1px solid var(--warm-gray);
   border-radius: 5px;
   background: var(--warm-gray);
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
   letter-spacing: 0.06em;
   color: var(--ink);
@@ -349,7 +358,7 @@ header {
   /* 页头自带 24px 下边距，往上收一点，让它读起来像问候语的续行，
      而不是一块独立内容 */
   margin: -6px 0 20px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   color: var(--muted);
 }
 
@@ -371,7 +380,7 @@ header {
 }
 
 .weather-temp {
-  font-family: 'Newsreader', serif;
+  font-family: 'Newsreader', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', serif;
   font-size: 19px;
   letter-spacing: -0.3px;
   color: var(--ink);
@@ -861,7 +870,7 @@ body.dragging-site .quick-site-open {
 }
 
 .tab-cleanup-btn {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
   font-weight: 600;
   padding: 8px 20px;
@@ -928,7 +937,7 @@ body.dragging-site .quick-site-open {
 }
 
 .section-header h2 {
-  font-family: 'Newsreader', serif;
+  font-family: 'Newsreader', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', serif;
   font-weight: 400;
   font-size: 18px;
   font-style: italic;
@@ -1211,7 +1220,7 @@ body.dragging-site .quick-site-open {
 
 .mission-page-count {
   font-size: 20px;
-  font-family: 'Newsreader', serif;
+  font-family: 'Newsreader', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', serif;
   font-weight: 300;
   color: var(--ink);
   line-height: 1;
@@ -1233,7 +1242,7 @@ body.dragging-site .quick-site-open {
 
 .action-btn {
   font-size: 11px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-weight: 500;
   padding: 5px 14px;
   border-radius: 4px;
@@ -1324,7 +1333,7 @@ body.dragging-site .quick-site-open {
   transform: translateX(-50%) translateY(80px);
   background: var(--ink);
   color: var(--paper);
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
   font-weight: 500;
   padding: 12px 24px;
@@ -1370,7 +1379,7 @@ footer {
 }
 
 .stat-num {
-  font-family: 'Newsreader', serif;
+  font-family: 'Newsreader', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', serif;
   font-size: 28px;
   font-weight: 300;
   color: var(--ink);
@@ -1392,7 +1401,7 @@ footer {
 }
 
 .refresh-btn {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-size: 11px;
   font-weight: 500;
   color: var(--accent-amber);
@@ -1501,7 +1510,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 .empty-title {
-  font-family: 'Newsreader', serif;
+  font-family: 'Newsreader', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', serif;
   font-size: 20px;
   font-weight: 400;
   font-style: italic;
@@ -1585,7 +1594,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 
 /* "Update now" button — small, filled, sage green */
 .update-banner-btn {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
   font-weight: 500;
   color: var(--on-accent);
@@ -1811,7 +1820,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 .archive-toggle {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
@@ -1852,7 +1861,7 @@ footer { animation: fadeUp 0.5s ease 0.65s both; }
 }
 
 .archive-search {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
   width: 100%;
   padding: 8px 12px;

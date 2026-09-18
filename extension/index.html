@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="7KhOTSDf54thuJzuCu3fXY">
   <title>归拢</title>
 
-  <!-- Google Fonts: Newsreader (for headings/numbers) + DM Sans (for body text) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" data-page-node-id="yAzMW9qoTXUz6hgit6m5BD">
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" data-page-node-id="CFc4Hp68vd7AVLfPhsoA65">
+  <!-- 字体：Newsreader（标题 / 数字）+ DM Sans（正文），**自托管**在 fonts/ 下。
+       ⚠️ 原来是挂 fonts.googleapis.com 的 <link> —— 那等于每开一个新标签页
+       就往 Google 发一次请求，跟「唯一的对外请求是天气」这句话对不上；
+       而且国内拉不到时 Mac 回退苹方、Windows 回退微软雅黑/宋体，
+       同一个扩展两个系统长得不一样。现在零网络请求，两边完全一致。
+       重跑 tools/fetch-fonts.js 可以重新生成。 -->
+  <link rel="stylesheet" href="fonts/fonts.css">
 
   <link rel="stylesheet" href="style.css" data-page-node-id="E14MAEXrzgWRYkK3D2RIiA">
 

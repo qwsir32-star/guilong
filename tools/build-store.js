@@ -105,23 +105,38 @@ function firefoxManifest(base) {
 
 /* ─── 打包 ────────────────────────────────────────────────────────────── */
 
+/**
+ * stage(target, manifest) — 把要打包的文件摊到 dist/<target>/
+ *
+ * ⚠️ 这个脚本**不删任何东西**，只覆写。原因很简单：它唯一想删的是自己上次
+ * 生成的产物，而一个拼错的 DIST 就能让它把别的东西带走。打包脚本不配拥有
+ * 删除权限。
+ *
+ * 代价是旧目录里可能有上次留下、这次已经不要的文件。这个风险用断言兜住：
+ * 下面会比对「目录里实际有什么」和「应该有什么」，多了就报错并点名是哪个 ——
+ * 由人来决定删不删。
+ */
 function stage(target, manifest) {
   const dir = path.join(DIST, target);
-  fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
 
-  // 只拷白名单里的：extension/ 下的文件 + icons/
+  const expected = new Set(['manifest.json']);
+
+  // 只拷白名单里的：extension/ 下的文件 + 各个子目录
   for (const name of fs.readdirSync(EXT)) {
     if (EXCLUDE.has(name)) continue;
     const from = path.join(EXT, name);
     const to   = path.join(dir, name);
+
     if (fs.statSync(from).isDirectory()) {
+      expected.add(name);
       fs.mkdirSync(to, { recursive: true });
       for (const sub of fs.readdirSync(from)) {
         if (EXCLUDE.has(sub)) continue;
         fs.copyFileSync(path.join(from, sub), path.join(to, sub));
       }
     } else {
+      expected.add(name);
       fs.copyFileSync(from, to);
     }
   }
@@ -130,15 +145,24 @@ function stage(target, manifest) {
     path.join(dir, 'manifest.json'),
     JSON.stringify(manifest, null, 2) + '\n'
   );
+
+  // 多出来的（上次留下、这次源里已经没有的）会说清楚是哪个，不替人删
+  const extra = fs.readdirSync(dir).filter(n => !expected.has(n));
+  if (extra.length) {
+    throw new Error(
+      `dist/${target}/ 里有 ${extra.length} 个不属于本次打包的文件：${extra.join('、')}\n` +
+      `  脚本不删东西 —— 确认没用后请手动删掉，再重跑一次。`
+    );
+  }
   return dir;
 }
 
 function zip(target, dir, version) {
   const zipPath = path.join(DIST, `guilong-${version}-${target}.zip`);
-  fs.rmSync(zipPath, { force: true });
   // 在目录**里面**执行 zip，manifest.json 才会落在包的根目录 ——
   // 套一层子目录的话三家商店都装不上，而且报错信息不会告诉你原因。
-  execFileSync('zip', ['-r', '-X', '-q', zipPath, '.'], { cwd: dir });
+  // -FS：就地同步，把已经不在目录里的文件从包里去掉（所以不用先删旧 zip）。
+  execFileSync('zip', ['-r', '-X', '-q', '-FS', zipPath, '.'], { cwd: dir });
   return zipPath;
 }
 
@@ -164,6 +188,17 @@ function assertCommon(target, m, dir) {
                    'strings.js', 'china-places.js', 'style.css', 'theme-boot.js']) {
     check(`页面要用的文件在包里：${f}`, fs.existsSync(path.join(dir, f)));
   }
+
+  /* 字体随包走 —— 这个最容易漏：漏了不报错，只是字体静默掉回系统字体，
+     而 Mac 和 Windows 回退出来的是两套样子。字重 / 子集变了也要跟着看。 */
+  const fontsDir = path.join(dir, 'fonts');
+  check('fonts/ 目录在包里', fs.existsSync(fontsDir));
+  check('  fonts.css 在', fs.existsSync(path.join(fontsDir, 'fonts.css')));
+  const woff2 = fs.existsSync(fontsDir)
+    ? fs.readdirSync(fontsDir).filter(f => f.endsWith('.woff2')) : [];
+  check(`  字体文件都在（${woff2.length} 张 woff2）`, woff2.length >= 6, true);
+  check('  页面引的是本地那份 fonts.css',
+    fs.readFileSync(path.join(dir, 'index.html'), 'utf8').includes('href="fonts/fonts.css"'), true);
 
   // 垃圾文件
   check('包里没有 .DS_Store', !fs.existsSync(path.join(dir, '.DS_Store')));
@@ -216,6 +251,7 @@ function assertZip(zipPath) {
     out.includes('manifest.json'), out.slice(0, 6).join(' | '));
   check('包里没有 .DS_Store', !out.some(f => f.includes('.DS_Store')));
   check('包里没有 config.local.js', !out.some(f => f.includes('config.local.js')));
+  check('字体也打进去了', out.filter(f => f.startsWith('fonts/')).length >= 7, true);
   return out.length;
 }
 
