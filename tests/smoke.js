@@ -21,7 +21,7 @@
  *   PART 8  页头三栏版式回归守卫（孩子必须显式 grid-column）
  *   PART 9  文案表（中英对应 / T 与 Tn / data-i18n 落 DOM / 不许绕开表写死文案 /
  *           旧品牌名不许回流 / manifest 用新名字与图标 / LICENSE 保留原始署名）
- *   PART 10 版式静态守卫（页头网格 / 天气条位置 / 设置面板结构）
+ *   PART 10 呼出快捷键（命令名 / 跳转地址 / manifest 声明）
  *   PART 11 当地天气（本地城市库 / 缓存 / 失败要安静）
  *   PART 12 主题色（解析 / 落 <html> / localStorage 镜像 / 主题块只写三元组）
  *   PART 13 稍后再看 / 归档（一键删除 / 归档还原 / 确认态 / 文案）
@@ -32,6 +32,7 @@
  *   PART 18 设置面板是居中悬浮的模态（<dialog> + showModal + 背板虚化）
  *   PART 19 index.html 里不许写死界面文案（补上 PART 9 只扫 app.js 的缺口）
  *   PART 20 出网主机白名单（图标一律本地读盘，不许再有第三个联网的地方）
+ *   PART 21 测试文件自己的一致性（分区编号 / 标题格式 / 目录注释不许漂移）
  */
 const fs = require('fs');
 const path = require('path');
@@ -927,7 +928,7 @@ async function part7() {
    后面的兄弟随即被自动排布顶到别的栏 —— 表现就是「开关搜索框，齿轮左右跳」。
    这条守卫就是防止以后有人把这几个 grid-column 顺手删掉。 */
 function part8() {
-  console.log('\n【PART 8】页头三栏：每个孩子都必须显式指定栏位');
+  console.log('\n[PART 8] 页头三栏：每个孩子都必须显式指定栏位');
   const css = fs.readFileSync(path.join(EXT, 'style.css'), 'utf8');
   const base = css.split('@media')[0].replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -959,7 +960,7 @@ function part8() {
       不在表里 —— 以后切语言或统一改措辞时必然漏掉它。
    ------------------------------------------------------------------ */
 function part9() {
-  console.log('\n【PART 9】文案表 STRINGS');
+  console.log('\n[PART 9] 文案表 STRINGS');
   const zh = S.STRINGS.zh, en = S.STRINGS.en;
   const zhKeys = Object.keys(zh), enKeys = Object.keys(en);
 
@@ -2693,6 +2694,85 @@ function part20() {
     [/img\.remove\(\)/.test(fbBlock), /img\.src/.test(fbBlock)], [true, false]);
 }
 
+/* ---------------- PART 21：测试文件自己的一致性 ----------------
+   这一节守的是**测试文件本身**，不是被测源码。起因是两处真实存在的漂移：
+
+   1. 头部目录注释里 `PART 10 版式静态守卫` 那一行。那一节早就拆进 PART 8
+      （页头网格）/ PART 11（天气条位置）/ PART 18（设置面板结构）了，
+      注释没跟着走 —— 照着注释去找守卫的人会找不到，而且找完了不觉得少东西。
+   2. PART 8、9 的标题用全角【】，其余用半角[]。后果不是难看，而是
+      **按 `[PART n]` 盘点分区时会静默漏掉两个** —— 漏掉的分区和
+      不存在的分区，看起来一模一样。
+
+   所以这里做三件事：格式统一、编号连续、目录注释不许再漂。
+   ------------------------------------------------------------------ */
+function part21() {
+  console.log('\n[PART 21] 测试文件自己的一致性（分区编号 / 标题格式 / 目录注释）');
+  const SELF = fs.readFileSync(__filename, 'utf8');
+
+  /* ---- 1. 标题格式统一：只许半角方括号 ----
+     ⚠️ 全角左括号这里**只能写成 \u3010 转义**。直接写那个字符的话，守卫自己的
+     正则字面量里就含「全角括号紧跟着 PART」，于是它把自己点着、永远红。
+     （跟「扫源码前先剥注释」是同一个坑：守卫的文本也会被守卫看见。） */
+  check('分区标题一律用半角 []（全角那版会让盘点静默漏区）',
+    (SELF.match(/\u3010PART /g) || []).length, 0);
+
+  /* ---- 2. 正文里每个分区标题的编号 ---- */
+  const heads = [];
+  const headRe = /console\.log\('\\n\[PART (\d+)\] ([^']*)'\);/g;
+  let hm;
+  while ((hm = headRe.exec(SELF)) !== null) heads.push({ n: Number(hm[1]), title: hm[2] });
+  const nums = heads.map(h => h.n);
+
+  // 锚点自证：正则跟写法脱钩时 heads 会是空的，后面几条就会假绿
+  check('扫到了分区标题（否则下面几条是假绿）', nums.length >= 20, true);
+  check('分区编号不重复', nums.length, new Set(nums).size);
+  check('分区编号连续、无缺号',
+    nums.slice().sort((a, b) => a - b).join(','),
+    Array.from({ length: nums.length }, (_, i) => i + 1).join(','));
+  check('分区标题都非空', heads.filter(h => h.title.trim()).length, heads.length);
+
+  /* ---- 3. 目录注释里的编号，必须和正文一一对上 ---- */
+  const tocBlock = SELF.slice(0, SELF.indexOf('*/'));
+  const toc = [];
+  const tocRe = /^[ \t]*\*?[ \t]*PART (\d+) /gm;
+  let tm;
+  while ((tm = tocRe.exec(tocBlock)) !== null) toc.push(Number(tm[1]));
+
+  check('目录注释的编号也不重复', toc.length, new Set(toc).size);
+  check('目录注释的编号集合 = 正文的编号集合',
+    toc.slice().sort((a, b) => a - b).join(','),
+    nums.slice().sort((a, b) => a - b).join(','));
+
+  /* ---- 4. 每个编号：目录那句和正文那节得是同一件事 ----
+     判据是「共享至少一个二字中文词」。漂移的那条（目录写「版式静态守卫」、
+     正文写「呼出快捷键」）一个词都对不上，所以会红。
+     注意只比中文 —— 目录里带英文标识符的那几行（saveAllOpenTabs 之类）
+     光靠英文也会看起来很一致。 */
+  const cnBigrams = s => {
+    const out = [];
+    for (let i = 0; i + 1 < s.length; i++) {
+      const g = s.slice(i, i + 2);
+      if (/^[\u4e00-\u9fa5]{2}$/.test(g)) out.push(g);
+    }
+    return out;
+  };
+  const tocTitleOf = n => {
+    const m = tocBlock.match(new RegExp('^[ \\t]*\\*?[ \\t]*PART ' + n + ' (.*)$', 'm'));
+    return m ? m[1] : '';
+  };
+  const drifted = heads
+    .filter(h => {
+      const mine = cnBigrams(h.title);
+      if (mine.length === 0) return false;           // 标题里没中文就不比（没有可判的）
+      const theirs = new Set(cnBigrams(tocTitleOf(h.n)));
+      return !mine.some(g => theirs.has(g));
+    })
+    .map(h => `PART ${h.n}：正文「${h.title}」↔ 目录「${tocTitleOf(h.n)}」`);
+
+  check('目录注释每一行和正文那节还是同一件事（没有漂移的标题）', drifted, []);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -2715,6 +2795,7 @@ function part20() {
   part18();
   part19();
   part20();
+  part21();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);
