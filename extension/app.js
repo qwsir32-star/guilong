@@ -2467,6 +2467,35 @@ function mirrorTheme(pref) {
 }
 
 /* ----------------------------------------------------------------
+   界面语言
+
+   和主题一样是「存偏好 → 解析成实际值」：存储里可能是 'system'，
+   真正用 zh 还是 en 得问系统。解析规则本身是纯函数，住在 strings.js
+   （resolveLanguage），这里只负责把 navigator 的语言递进去。
+   ---------------------------------------------------------------- */
+
+/** 系统现在说的是什么语言。取不到（老浏览器 / 测试沙箱）就当没线索 */
+function systemLanguage() {
+  try {
+    if (typeof navigator === 'undefined') return '';
+    return navigator.language || (navigator.languages && navigator.languages[0]) || '';
+  } catch (err) {
+    return '';
+  }
+}
+
+/**
+ * applyLanguage(pref) — 把语言偏好落成「当前界面语言」
+ *
+ * ⚠️ 必须在 applyStaticStrings() **之前**调：静态文案和仪表盘都从 LANG 取词，
+ * 晚一步就会先画出一屏中文、再翻成英文。
+ */
+function applyLanguage(pref) {
+  setLang(resolveLanguage(pref, systemLanguage()));
+  return LANG;
+}
+
+/* ----------------------------------------------------------------
    新标签页模块开关 + 搜索框
 
    开关只控制「显示不显示」，**绝不删数据** —— 关掉站点条之后，pinnedSites 和
@@ -2475,10 +2504,11 @@ function mirrorTheme(pref) {
 
 /** 开关的默认值。以后要加新开关，在这里补一行就行（见 getUiPrefs 的合并逻辑） */
 const UI_PREFS_DEFAULTS = {
-  showQuickSites: true,   // 常用站点条
-  showSearchBox:  true,   // 搜索框
+  showQuickSites: false,  // 常用站点条 —— 默认关
+  showSearchBox:  false,  // 搜索框 —— 默认关
   showWeather:    true,   // 当地天气（默认地点见 DEFAULT_WEATHER_LOCATION）
-  theme:          DEFAULT_THEME,  // 主题色 —— 字符串，不是开关（见「主题」一节）
+  theme:          DEFAULT_THEME,     // 主题色 —— 字符串，不是开关（见「主题」一节）
+  language:       DEFAULT_LANGUAGE,  // 界面语言 —— 同上，'system' / 'zh' / 'en'
 };
 
 /**
@@ -2507,12 +2537,19 @@ async function setUiPref(key, value) {
     mirrorTheme(prefs.theme);   // 同步镜像，下次开新标签页才不会闪一下
   }
 
+  // 语言同理：不认识的值不许进存储，否则设置面板那个下拉框会显示成空白
+  if (key === 'language') prefs.language = normalizeLanguage(prefs.language);
+
   await chrome.storage.local.set({ [UI_PREFS_KEY]: prefs });
 }
 
 /** applyUiPrefs() — 把开关状态落到 DOM 上（显示/隐藏 + 同步开关自己的位置） */
 async function applyUiPrefs() {
   const prefs = await getUiPrefs();
+
+  // 语言先落定：下面凡是取词的地方（站点条、天气文案、开关自己的 label）都靠它。
+  // 它必须排在 applyStaticStrings 之前 —— 见 renderDashboard 里的顺序说明。
+  applyLanguage(prefs.language);
 
   const quickBlock = document.getElementById('quickSites');
   if (quickBlock) quickBlock.style.display = prefs.showQuickSites ? '' : 'none';
@@ -3159,12 +3196,22 @@ async function runSearch(raw) {
   await chrome.tabs.create({ url: `https://www.bing.com/search?q=${encodeURIComponent(text)}` });
 }
 
-async function renderDashboard() {
-  // 先把 index.html 里带 data-i18n 的静态文案填上（按钮、label、placeholder 那些）
-  applyStaticStrings();
+/**
+ * renderDashboard(opts) — 把整个仪表盘画一遍
+ *
+ * opts.focus === false 时不抢光标：换语言要整块重画，但用户那会儿正待在设置
+ * 面板里，光标被拽到搜索框去很讨厌（和 applyUiPrefs 不聚焦是同一个道理）。
+ */
+async function renderDashboard(opts) {
+  const focus = !opts || opts.focus !== false;
 
-  // 再把开关状态落到 DOM 上：站点条可能整个被关掉，那样连渲染都不用做
+  // ⚠️ 顺序要紧：applyUiPrefs 里会把界面语言落定（applyLanguage），而下一行
+  // applyStaticStrings 就开始取词了。反过来写的话，换完语言会先画出一屏
+  // 旧语言的静态文案再翻过来。
   const prefs = await applyUiPrefs();
+
+  // 再把 index.html 里带 data-i18n 的静态文案填上（按钮、label、placeholder 那些）
+  applyStaticStrings();
 
   // 快捷键那一行：读 Chrome 当前给它绑的组合（读不到就显示「未设置」）
   await renderShortcutSetting();
@@ -3173,7 +3220,7 @@ async function renderDashboard() {
   await renderWeatherPlaceSetting();
 
   // 光标尽早进去，别等下面那两步渲染完 —— 用户开了新标签页可能立刻就开始打字
-  if (prefs.showSearchBox) focusSearchBox();
+  if (focus && prefs.showSearchBox) focusSearchBox();
 
   // 站点条和打开的标签页无关，单独渲染一次就好，不用跟着仪表盘反复重画
   await renderQuickSites();
@@ -3759,6 +3806,14 @@ document.addEventListener('change', async (e) => {
 
   await setUiPref(key, value);
   await applyUiPrefs();
+
+  // 换了语言要整块重画：静态文案、日期、章节标题、计数全是新语言的东西，
+  // 只切 LANG 不重画的话页面会中英混着。
+  // focus:false —— 用户正在设置面板里操作，别把光标抢到搜索框去。
+  if (key === 'language') {
+    await renderDashboard({ focus: false });
+    return;
+  }
 
   // 站点条从「关」切回「开」时要补一次渲染 —— 关着的时候根本没画过
   if (input.dataset.setting === 'showQuickSites') {

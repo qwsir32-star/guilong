@@ -6,8 +6,8 @@
    想换个说法得全仓库搜。现在统一走这张表。
 
    ── 三条约定 ────────────────────────────────────────────────────
-   1. **默认中文**（DEFAULT_LANG = 'zh'）。原版是英文，en 表原样保留，
-      以后想做语言开关只要调 setLang() 就行。
+   1. **默认跟随系统**（DEFAULT_LANGUAGE = 'system'）。系统说中文就给中文，
+      其余给英文；用户也能在设置面板里钉死一个。DEFAULT_LANG 是最后兜底。
    2. **zh / en 的 key 必须一一对应**。冒烟测试里有一条断言专门比两边的
       key 集合，少一条就报错 —— 不然翻译漏了谁也不会发现。
    3. **复数 / 变位一律整条模板做一个词目**，不要拆词再拼。
@@ -30,7 +30,7 @@
 
 const DEFAULT_LANG = 'zh';
 
-// 当前语言。以后要做设置项，改这个 + 重跑 applyStaticStrings() + 重画仪表盘即可。
+// 当前语言
 let LANG = DEFAULT_LANG;
 
 // 各语言对应的 Intl 区域标识 —— 日期格式化要用（见 app.js 的 getDateDisplay）
@@ -38,6 +38,53 @@ const LANG_LOCALES = {
   zh: 'zh-CN',
   en: 'en-US',
 };
+
+/* ----------------------------------------------------------------
+   界面语言偏好（设置面板里的「界面语言」那一行）
+
+   'system' 不是一种语言，是一条指令 —— 和主题的 'system' 同一个套路：
+   存储里留着它（留着才能在设置面板里把选中项显示回「跟随系统」），
+   真正用的是 zh 还是 en，由 resolveLanguage 解掉。
+   ---------------------------------------------------------------- */
+
+/** 有哪几种界面语言（设置里能手动选的） */
+const LANG_IDS = ['zh', 'en'];
+const LANG_SYSTEM = 'system';
+
+/** 默认偏好：跟随系统 */
+const DEFAULT_LANGUAGE = LANG_SYSTEM;
+
+/**
+ * normalizeLanguage(pref) — 存的值 → 存的值。不认识的回默认（跟随系统）
+ *
+ * 和 normalizeTheme 一个道理：**不认识的值不许写进存储**。写进去的话设置面板
+ * 那个下拉框会显示成空白（没有哪个 <option> 的 value 对得上），看着像是坏了。
+ */
+function normalizeLanguage(pref) {
+  if (pref === LANG_SYSTEM) return LANG_SYSTEM;
+  return LANG_IDS.indexOf(pref) !== -1 ? pref : DEFAULT_LANGUAGE;
+}
+
+/**
+ * resolveLanguage(pref, systemTag) — 存的值 + 系统语言 → 真正用的语言
+ *
+ * ⚠️ systemTag 是**参数**，不是函数里直接读 navigator：真机是中文系统还是
+ * 英文系统造不出来，但字符串可以传。所以这是个纯函数，冒烟测试能直接喂
+ * 'zh-CN' / 'en-GB' / 'fr-FR' 进去断言。
+ *
+ * 三档：
+ *   - 取不到系统语言（老浏览器 / 测试沙箱）→ 项目的默认语言，当没线索
+ *   - 系统说中文 → 中文（zh-Hant 这些也都算中文，我们没有繁体表，简体最接近）
+ *   - 其余（含 en）→ 英文。fr / de / ja 这些我们没做的语言给英文更好懂，
+ *     给中文就没人看得懂了。
+ */
+function resolveLanguage(pref, systemTag) {
+  const wanted = normalizeLanguage(pref);
+  if (wanted !== LANG_SYSTEM) return wanted;
+  const tag = String(systemTag || '');
+  if (!tag) return DEFAULT_LANG;
+  return /^zh/i.test(tag) ? 'zh' : 'en';
+}
 
 const STRINGS = {
 
@@ -112,6 +159,18 @@ const STRINGS = {
     'settings.weatherPlace.input':   '输入城市名，回车搜索（中国省、市两级）',
     'settings.weatherPlace.search':  '搜索',
     'settings.weatherPlace.empty':   '城市库里没有 —— 只收录中国省、市两级行政区，换个写法试试',
+
+    /* ---- 界面语言 ----
+       语言名用各自的语言写（中文 / English），不跟着界面语言翻译：
+       否则英文用户看到 "Chinese"、中文用户看到「英语」，反而不好认。 */
+    'settings.language.name': '界面语言',
+    'settings.language.desc': '默认跟随系统。',
+    'lang.system':            '跟随系统',
+    'lang.zh':                '中文',
+    'lang.en':                'English',
+
+    /* ---- 标签页标题（<title>，见 applyStaticStrings）---- */
+    'doc.title':              '归拢',
 
     /* ---- 主题 ----
        主题名是界面上的选项名，走表；主题的配色在 style.css 里。 */
@@ -306,6 +365,14 @@ const STRINGS = {
     'settings.weatherPlace.search':  'Search',
     'settings.weatherPlace.empty':   'Not in the built-in list (China, province & city level) — try another spelling',
 
+    'settings.language.name': 'Language',
+    'settings.language.desc': 'Follows your system by default.',
+    'lang.system':            'Follow system',
+    'lang.zh':                '中文',
+    'lang.en':                'English',
+
+    'doc.title':              'Guilong',
+
     'settings.theme.name':   'Theme',
     'settings.theme.desc':   'Change the colour scheme. "Follow system" tracks your computer’s light/dark setting.',
     'theme.paper':           'Paper (default)',
@@ -487,6 +554,9 @@ function applyStaticStrings(root) {
     // 写完整区域标识（zh-CN / en-US）而不是光秃秃的 'zh'：
     // 浏览器的断行、标点挤压、字体回退都是按这个挑规则的，'zh' 太含糊。
     document.documentElement.lang = localeOf();
+    // 标签页上显示的名字也走表 —— 中文叫「归拢」，英文叫「Guilong」。
+    // 沙箱里的 document 是个壳，没有 title 就跳过：文案缺失不该让页面白屏。
+    if ('title' in document) document.title = T('doc.title');
   }
 
   scope.querySelectorAll('[data-i18n]').forEach(el => {

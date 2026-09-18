@@ -28,6 +28,7 @@
  *   PART 14 跨浏览器（env.js 判定 / Firefox 差异 / README 的加载路径）
  *   PART 15 字体自托管（Mac / Windows 一致 + 零网络请求）
  *   PART 16 README 结构（目录锚点不许死链 / 仓库内链接真实存在 / 许可证压轴）
+ *   PART 17 界面语言（中英切换 / 默认跟随系统 / 标题走文案表）
  */
 const fs = require('fs');
 const path = require('path');
@@ -53,6 +54,7 @@ const code = fs.readFileSync(APP, 'utf8') + `
   getUiPrefs, setUiPref, applyUiPrefs, looksLikeUrl, runSearch, focusSearchBox,
   resolveTheme, normalizeTheme, paintTheme, mirrorTheme, isDarkTheme,
   readSettingValue,
+  systemLanguage, applyLanguage,
   THEME_IDS, DARK_THEME_IDS, THEME_SYSTEM, DEFAULT_THEME, THEME_MIRROR_KEY,
   UI_PREFS_DEFAULTS,
   formatShortcut, formatShortcutParts, COMMAND_NAME, SHORTCUTS_URL,
@@ -307,7 +309,8 @@ vm.runInContext(
 const STRINGS_PATH = path.join(EXT, 'strings.js');
 vm.runInContext(
   fs.readFileSync(STRINGS_PATH, 'utf8') +
-  ';globalThis.__s={STRINGS,T,Tn,setLang,localeOf,applyStaticStrings,LANG_LOCALES,getLang:()=>LANG};',
+  ';globalThis.__s={STRINGS,T,Tn,setLang,localeOf,applyStaticStrings,LANG_LOCALES,getLang:()=>LANG,' +
+    'normalizeLanguage,resolveLanguage,LANG_IDS,LANG_SYSTEM,DEFAULT_LANGUAGE};',
   sandbox);
 const S = sandbox.__s;
 
@@ -801,9 +804,12 @@ async function part7() {
 
   /* --- 开关的读写 --- */
   delete store.uiPrefs;
-  check('没设置过时读默认值（三个都开 + 默认主题）',
+  // 2026-09-19：站点条和搜索框改成**默认关**（新标签页先给一屏干净的标签页），
+  // 天气默认开；语言默认「跟随系统」。这条断言就是那份默认值的唯一书面记录。
+  check('没设置过时读默认值（站点条 / 搜索框默认关，天气开，语言跟随系统）',
     await T.getUiPrefs(),
-    { showQuickSites: true, showSearchBox: true, showWeather: true, theme: 'paper' });
+    { showQuickSites: false, showSearchBox: false, showWeather: true,
+      theme: 'paper', language: 'system' });
 
   await T.setUiPref('showQuickSites', false);
   check('关掉站点条后读回来是关的', (await T.getUiPrefs()).showQuickSites, false);
@@ -814,11 +820,12 @@ async function part7() {
   store.uiPrefs = { showQuickSites: false };
   check('缺的键自动补默认值',
     await T.getUiPrefs(),
-    { showQuickSites: false, showSearchBox: true, showWeather: true, theme: 'paper' });
+    { showQuickSites: false, showSearchBox: false, showWeather: true,
+      theme: 'paper', language: 'system' });
 
   await T.setUiPref('不存在的开关', false);
   check('未声明的开关不许写进去', Object.keys(await T.getUiPrefs()).sort(),
-    ['showQuickSites', 'showSearchBox', 'showWeather', 'theme']);
+    ['language', 'showQuickSites', 'showSearchBox', 'showWeather', 'theme']);
 
   /* --- 开关落到 DOM 上 --- */
   domNodes.set('quickSites', fakeDomNode());
@@ -846,7 +853,7 @@ async function part7() {
   check('applyUiPrefs 把读到的开关返回出来',
     await T.applyUiPrefs(),
     { showQuickSites: false, showSearchBox: true, showWeather: true,
-      theme: 'paper', themeId: 'paper' });
+      theme: 'paper', language: 'system', themeId: 'paper' });
 
   T.focusSearchBox();
   check('focusSearchBox 把光标放进搜索框',
@@ -2283,6 +2290,138 @@ function part16() {
     headings[headings.length - 1], '许可证');
 }
 
+/* =================================================================
+   PART 17 — 界面语言（中英切换 / 默认跟随系统）
+
+   这一块的形状**刻意和主题一样**，因为会踩的坑也一样：
+
+     1. 存储里存的是「选了什么」（可能是 system），真画出来的是「用了哪个」
+        （zh 还是 en）。这两个必须分开 —— 否则用户打开设置会看到选项莫名停在
+        中文上，他明明选的是「跟随系统」。normalizeLanguage 保 system，
+        resolveLanguage 才把它解掉。
+     2. 读系统语言必须能失败。沙箱里没有 navigator，取不到就回**默认中文**，
+        既不把界面搞成空白，也不能因为读不到就悄悄跳成英文 ——
+        中文用户会一脸茫然。
+     3. 语言是界面级状态：它必须在 applyStaticStrings 之前落定，
+        否则会先画一屏旧语言、再翻过来。
+     4. 下拉里 option 的文字一律走文案表 —— 拿它的文字做判断，翻译之后就
+        认不出来了（和 PART 9 那条老坑是同一种形状）。
+   ================================================================= */
+function part17() {
+  console.log('\n[PART 17] 界面语言（中英 / 默认跟随系统）');
+
+  /* ---- 存的值：不认识的一律回「跟随系统」，而不是回中文 ---- */
+  check('normalizeLanguage 原样保留 system', S.normalizeLanguage('system'), 'system');
+  check('normalizeLanguage 认得 zh / en',
+    [S.normalizeLanguage('zh'), S.normalizeLanguage('en')], ['zh', 'en']);
+  check('normalizeLanguage 把不认识的拉回默认（跟随系统）',
+    [undefined, null, '', 'ZH', 'jp', true, 42, {}].map(v => S.normalizeLanguage(v)),
+    Array(8).fill(S.LANG_SYSTEM));
+
+  /* ---- 真正用的语言：system 在这一步被解掉 ---- */
+  check('跟随系统 + 中文系统 → zh',   S.resolveLanguage('system', 'zh-CN'), 'zh');
+  check('跟随系统 + 纯 zh → zh',     S.resolveLanguage('system', 'zh'),    'zh');
+  check('跟随系统 + 英文系统 → en',   S.resolveLanguage('system', 'en-US'), 'en');
+  check('跟随系统 + 非中文系统 → en', S.resolveLanguage('system', 'ja-JP'), 'en');
+  // 沙箱里没有 navigator，systemLanguage() 给的是空串。取不到线索时回默认中文。
+  check('取不到系统语言 → 回默认中文', S.resolveLanguage('system', ''), 'zh');
+  check('显式选了 zh，系统是英文也不改', S.resolveLanguage('zh', 'en-US'), 'zh');
+  check('显式选了 en，系统是中文也不改', S.resolveLanguage('en', 'zh-CN'), 'en');
+  check('存的是脏数据 → 当跟随系统处理', S.resolveLanguage('nope', 'en-US'), 'en');
+
+  /* ---- 默认值：跟随系统，而且是存储里那份默认 ---- */
+  check('DEFAULT_LANGUAGE 就是「跟随系统」', S.DEFAULT_LANGUAGE, S.LANG_SYSTEM);
+  check('uiPrefs 的默认语言是「跟随系统」（新装用户第一眼跟着系统走）',
+    T.UI_PREFS_DEFAULTS.language, S.LANG_SYSTEM);
+  check('界面语言只有 zh / en 两个可选', S.LANG_IDS, ['zh', 'en']);
+
+  /* ---- 取不到系统语言时不许炸 ---- */
+  check('沙箱里 systemLanguage() 返回空串、不抛错', T.systemLanguage(), '');
+
+  /* ---- applyLanguage：把偏好落成「当前界面语言」 ---- */
+  check('applyLanguage 把界面切成英文', T.applyLanguage('en'), 'en');
+  check('  切完 LANG 真的是英文', S.getLang(), 'en');
+  check('applyLanguage 认「跟随系统」（沙箱无 navigator → 中文）',
+    T.applyLanguage('system'), 'zh');
+  check('  切回中文', S.getLang(), 'zh');
+  S.setLang('zh');
+
+  /* ---- 静态：设置面板里的下拉 ---- */
+  const HTML_SRC = srcOf('index.html');
+  const langOpts = [...HTML_SRC.matchAll(
+    /<option value="([a-z]+)"[^>]*data-i18n="lang\.([a-z]+)"/g)].map(m => m[1]);
+  check('设置面板里有语言下拉', /data-setting="language"/.test(HTML_SRC), true);
+  check('语言下拉正好三个选项：跟随系统 / 中文 / 英文',
+    langOpts, ['system', 'zh', 'en']);
+  check('每个语言选项的文字都在文案表里',
+    ['lang.system', 'lang.zh', 'lang.en']
+      .filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
+  check('语言那两行（名字 / 说明）也在表里',
+    ['settings.language.name', 'settings.language.desc']
+      .filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
+
+  /* ---- 静态：顺序与重画 ---- */
+  const APP_SRC = fs.readFileSync(APP, 'utf8');
+
+  // 语言必须在填静态文案之前落定，否则会先画一屏旧语言
+  const ia = APP_SRC.indexOf('const prefs = await applyUiPrefs();');
+  const ib = APP_SRC.indexOf('applyStaticStrings();', ia);
+  check('renderDashboard 里 applyUiPrefs（含落语言）排在 applyStaticStrings 之前',
+    ia > -1 && ib > ia, true);
+
+  // 换语言要整块重画，而且不许抢光标（用户正待在设置面板里）
+  check('换语言会整块重画仪表盘、且不抢光标',
+    /key === 'language'[\s\S]{0,160}renderDashboard\(\{\s*focus:\s*false\s*\}\)/.test(APP_SRC),
+    true);
+
+  // 页面标题也走表：中文「归拢」，英文「Guilong」
+  check('中文页面标题是「归拢」', S.STRINGS.zh['doc.title'], '归拢');
+  check('  英文页面标题是 Guilong', S.STRINGS.en['doc.title'], 'Guilong');
+  check('applyStaticStrings 会把 document.title 换成当前语言的',
+    /document\.title = T\('doc\.title'\)/.test(srcOf('strings.js')), true);
+
+  /* ---- 静态：文档里写的默认值必须和代码里的一致 ----
+     这是最会静默漂移的一类：改了 UI_PREFS_DEFAULTS，README 的「默认」列和
+     商店文案还写着老值，页面上看着一切正常。上面刚把站点条 / 搜索框从「开」
+     改成「关」，正是这条守卫要盯的时刻。 */
+  const README_SRC = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  // ⚠️ 只切出「## 设置」那一节再找行：功能表里的行标签和设置表**重名**
+  //    （常用站点条 / 搜索框 / 当地天气 / 主题色），不切片会抓到功能表去。
+  const setFrom = README_SRC.indexOf('## 设置');
+  const SET_SECTION = README_SRC.slice(setFrom, README_SRC.indexOf('\n## ', setFrom));
+  const zhText = k => S.STRINGS.zh[k];
+  const readmeDefault = label => {
+    const m = SET_SECTION.match(
+      new RegExp('^\\|\\s*' + label + '\\s*\\|\\s*([^|]+?)\\s*\\|', 'm'));
+    return m ? m[1] : null;
+  };
+  // 主题色那一行不在这条守卫里：设置表写的是「纸感」，而下拉的选项文案是
+  // 「纸感（默认）」，两处措辞本来就不同，硬映射只会造出一条假断言。
+  const codeDefault = {
+    '常用站点条': T.UI_PREFS_DEFAULTS.showQuickSites ? '开' : '关',
+    '搜索框':     T.UI_PREFS_DEFAULTS.showSearchBox ? '开' : '关',
+    '当地天气':   T.UI_PREFS_DEFAULTS.showWeather  ? '开' : '关',
+    // 'system' → 表里那条 'lang.system'，正是设置面板下拉里显示的那个词
+    '界面语言':   zhText('lang.' + T.UI_PREFS_DEFAULTS.language),
+  };
+  check('README 设置表的「默认」列和代码里的默认值一致',
+    Object.keys(codeDefault)
+      .filter(k => readmeDefault(k) !== codeDefault[k])
+      .map(k => `${k}：README 写「${readmeDefault(k)}」，代码是「${codeDefault[k]}」`), []);
+
+  // 商店文案和 agent 手册里那两句「默认中文」也得跟着改 —— 商店那行是
+  // 用户真正读到的文字，它写错就是对外说错话。
+  const STORE_SRC = fs.readFileSync(path.join(ROOT, 'store/上架文案.md'), 'utf8');
+  const AGENTS_SRC = fs.readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8');
+  check('商店文案里「中英双语」那行写的是跟随系统，不是默认中文',
+    /【中英双语】[^\n]*跟随系统/.test(STORE_SRC), true);
+  check('  AGENTS.md 也说跟随系统，不说默认中文',
+    /默认跟随系统/.test(AGENTS_SRC), true);
+  check('  没有任何一份文档还在说「默认中文」',
+    ['README.md', 'AGENTS.md', 'store/上架文案.md']
+      .filter(f => /默认中文/.test(fs.readFileSync(path.join(ROOT, f), 'utf8'))), []);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -2301,6 +2440,7 @@ function part16() {
   await part14();
   part15();
   part16();
+  part17();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

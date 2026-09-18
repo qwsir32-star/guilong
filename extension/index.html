@@ -90,6 +90,21 @@
   <div class="settings-panel" id="settingsPanel">
     <p class="settings-title" data-i18n="settings.title"></p>
 
+    <!-- 界面语言 —— 和主题一样是下拉。value 是 'system' / 'zh' / 'en'，
+         option 的文字走文案表（data-i18n），别拿它的文字做判断
+         （翻译之后就认不出来了）。默认跟随系统。 -->
+    <label class="setting-row">
+      <span class="setting-text">
+        <span class="setting-name" data-i18n="settings.language.name"></span>
+        <span class="setting-desc" data-i18n="settings.language.desc"></span>
+      </span>
+      <select class="setting-select" data-setting="language">
+        <option value="system" data-i18n="lang.system"></option>
+        <option value="zh"     data-i18n="lang.zh"></option>
+        <option value="en"     data-i18n="lang.en"></option>
+      </select>
+    </label>
+
     <!-- 主题色 —— 下拉而不是开关，所以整行用 label：点文字也能唤出下拉。
          option 的文字走文案表（data-i18n），value 是主题 id，别在 JS 里
          拿 option 的文字做判断（翻译之后就认不出来了）。 -->
