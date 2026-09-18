@@ -17,6 +17,22 @@
 
 
 /* ----------------------------------------------------------------
+   浏览器环境（Chrome / Edge / Firefox）
+
+   差异全在 env.js 里。这里包一层是为了两种没加载 env.js 的情况也能跑：
+   ① 冒烟测试的沙箱（没有 navigator、没有 script 标签）—— 拿不到就按
+      Chromium 处理，那正是测试要验的那条路；
+   ② 万一 env.js 没被引进 index.html —— 顶多退化成 Chrome 行为，
+      不会整页炸掉。
+   ---------------------------------------------------------------- */
+function envOf() {
+  return (typeof globalThis !== 'undefined' && globalThis.GL_ENV) ||
+         (typeof GL_ENV !== 'undefined' && GL_ENV) ||
+         { isFirefox: false, browserNewtabUrls: ['chrome://newtab/', 'edge://newtab/'], shortcutsUrl: 'chrome://extensions/shortcuts', hasFaviconEndpoint: true, isInternalUrl: u => /^(about:|chrome:|edge:|brave:|opera:|vivaldi:|chrome-extension:|moz-extension:|edge-extension:)/.test(u || '') };
+}
+
+
+/* ----------------------------------------------------------------
    CHROME TABS — Direct API Access
 
    Since this page IS the extension's new tab page, it has full
@@ -34,9 +50,11 @@ let openTabs = [];
  */
 async function fetchOpenTabs() {
   try {
-    const extensionId = chrome.runtime.id;
-    // The new URL for this page is now index.html (not newtab.html)
-    const newtabUrl = `chrome-extension://${extensionId}/index.html`;
+    // ⚠️ 不能拼 `chrome-extension://${id}/index.html` —— Firefox 上的 scheme
+    // 是 moz-extension://，拼死就永远匹配不上，「关掉多余的归拢页」会失效
+    // 且不报错。getURL() 三家通用。
+    const newtabUrl = chrome.runtime.getURL('index.html');
+    const newtabs   = envOf().browserNewtabUrls;
 
     const tabs = await chrome.tabs.query({});
     openTabs = tabs.map(t => ({
@@ -46,7 +64,7 @@ async function fetchOpenTabs() {
       windowId: t.windowId,
       active:   t.active,
       // Flag Guilong's own pages so we can detect duplicate new tabs
-      isTabOut: t.url === newtabUrl || t.url === 'chrome://newtab/',
+      isTabOut: t.url === newtabUrl || newtabs.indexOf(t.url) !== -1,
     }));
   } catch {
     // chrome.tabs API unavailable (shouldn't happen in an extension page)
@@ -175,13 +193,13 @@ async function closeDuplicateTabs(urls, keepOne = true) {
  * Closes all duplicate Guilong new-tab pages except the current one.
  */
 async function closeTabOutDupes() {
-  const extensionId = chrome.runtime.id;
-  const newtabUrl = `chrome-extension://${extensionId}/index.html`;
+  const newtabUrl = chrome.runtime.getURL('index.html');
+  const newtabs   = envOf().browserNewtabUrls;
 
   const allTabs = await chrome.tabs.query({});
   const currentWindow = await chrome.windows.getCurrent();
   const tabOutTabs = allTabs.filter(t =>
-    t.url === newtabUrl || t.url === 'chrome://newtab/'
+    t.url === newtabUrl || newtabs.indexOf(t.url) !== -1
   );
 
   if (tabOutTabs.length <= 1) return;
@@ -685,16 +703,26 @@ function resolveSiteIcon(site, label) {
 /**
  * faviconUrlFor(url, size) — 图标地址
  *
- * 走 MV3 自带的 _favicon 端点：读的是**浏览器本地**的图标缓存，不发网络请求、
- * 不受墙影响。需要一个 favicon 权限，已在 manifest.json 里声明。
+ * 走 _favicon 端点：读的是**浏览器本地**的图标缓存，不发网络请求、不受墙影响。
+ * 需要一个 favicon 权限，已在 manifest.json 里声明。
+ *
+ * ⚠️ 但这个端点**只有 Chromium 有**（Chrome / Edge / Brave / Opera），
+ * Firefox 没做等价物。所以 Firefox 上这里返回空串 —— 调用方看到空串就不建
+ * <img>，直接露首字母色块。这是**故意的**：为了一张图标去访问站点自己的
+ * 服务器，会把「唯一联网的是天气」这句话戳破，不值得。
+ *
+ * 地址同样不能拼 `chrome-extension://`（Firefox 是 moz-extension://）。
  *
  * 注意它「读不到」的两种表现完全不同：
  *   - 真出错（比如 URL 压根不合法）→ 图片 onerror，退到 google s2，再退首字母色块
  *   - 本地没有这个站的缓存 → **返回一张默认地球图，不报错**
  * 第二种才是「有的网站怎么没有图标」的常见原因，靠 dropIfDefaultFavicon 处理。
+ *
+ * @returns {string} 图标地址；Firefox 或地址解析不出来时给空串
  */
 function faviconUrlFor(url, size = 32) {
-  return `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(url)}&size=${size}`;
+  if (!envOf().hasFaviconEndpoint) return '';
+  return chrome.runtime.getURL(`_favicon/?pageUrl=${encodeURIComponent(url)}&size=${size}`);
 }
 
 /**
@@ -810,7 +838,11 @@ function faviconSignature(source) {
 
 function getDefaultFaviconSignature() {
   if (!defaultFaviconSig) {
-    defaultFaviconSig = faviconSignature(faviconUrlFor(DEFAULT_FAVICON_PROBE, 32));
+    // Firefox 上没有 _favicon，也就没有「默认地球图」这回事。基准给 null，
+    // dropIfDefaultFavicon 会因为 def 为空直接返回 —— 别为它发一次必然失败的请求。
+    defaultFaviconSig = envOf().hasFaviconEndpoint
+      ? faviconSignature(faviconUrlFor(DEFAULT_FAVICON_PROBE, 32))
+      : Promise.resolve(null);
   }
   return defaultFaviconSig;
 }
@@ -1566,16 +1598,9 @@ let domainGroups = [];
  * pages, about:blank, etc.
  */
 function getRealTabs() {
-  return openTabs.filter(t => {
-    const url = t.url || '';
-    return (
-      !url.startsWith('chrome://') &&
-      !url.startsWith('chrome-extension://') &&
-      !url.startsWith('about:') &&
-      !url.startsWith('edge://') &&
-      !url.startsWith('brave://')
-    );
-  });
+  // 内部页清单在 env.js 里（三家浏览器的 scheme 不一样），别在这儿硬编码
+  const isInternal = envOf().isInternalUrl;
+  return openTabs.filter(t => !isInternal(t.url));
 }
 
 /**
@@ -2531,7 +2556,8 @@ async function applyUiPrefs() {
    ---------------------------------------------------------------- */
 
 const COMMAND_NAME  = 'open-dashboard';
-const SHORTCUTS_URL = 'chrome://extensions/shortcuts';
+// Firefox 上没有直达地址，只能把人送到 about:addons（见 env.js）
+const SHORTCUTS_URL = envOf().shortcutsUrl;
 
 // navigator 在 Node 的冒烟测试沙箱里不存在，判一下再读，别让加载直接炸
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '');
@@ -2597,7 +2623,8 @@ async function openShortcutSettings() {
   try {
     await chrome.tabs.create({ url: SHORTCUTS_URL });
   } catch {
-    showToast(T('toast.shortcutUnavailable'));
+    // 地址是 env.js 给的（三家不一样），塞进文案里而不是写死在文案里
+    showToast(T('toast.shortcutUnavailable', { url: SHORTCUTS_URL }));
   }
 }
 

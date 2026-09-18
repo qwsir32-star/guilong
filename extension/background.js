@@ -9,7 +9,12 @@
  *      focusOrOpenDashboard()，「呼出仪表盘」只有一套行为。
  *
  * Since we no longer have a server, we query chrome.tabs directly.
- * The badge counts real web tabs (skipping chrome:// and extension pages).
+ * The badge counts real web tabs (skipping browser-internal pages).
+ *
+ * ⚠️ 这个文件同时跑在两种后台里：
+ *   - Chrome / Edge：service worker（manifest 的 background.service_worker）
+ *   - Firefox：event page（manifest 的 background.scripts，没有 service worker）
+ *   所以要照最低标准写——别用 window、别用 localStorage、监听器一律挂在顶层。
  *
  * Color coding gives a quick at-a-glance health signal:
  *   Green  (#3d7a4a) → 1–10 tabs  (focused, manageable)
@@ -17,29 +22,40 @@
  *   Red    (#b35a5a) → 21+ tabs   (time to cull!)
  */
 
+/* ─── 浏览器环境 ──────────────────────────────────────────────────────────────
+   env.js 在 Firefox 的 manifest 里排在 background.js 前面，会先加载好；
+   Chrome 的 service worker 没有 "scripts" 这个键，只能靠 importScripts 现拉。
+   两条路都走一遍（谁先到算谁的），取不到就按 Chromium 兜底。               */
+if (typeof globalThis.GL_ENV === 'undefined' && typeof importScripts === 'function') {
+  importScripts('./env.js');
+}
+
+function bgEnv() {
+  return (typeof globalThis !== 'undefined' && globalThis.GL_ENV) || {
+    isFirefox: false,
+    browserNewtabUrls: ['chrome://newtab/', 'edge://newtab/'],
+    isInternalUrl: u => /^(about:|chrome:|edge:|brave:|opera:|chrome-extension:|moz-extension:)/.test(u || ''),
+  };
+}
+
 // ─── Badge updater ────────────────────────────────────────────────────────────
 
 /**
  * updateBadge()
  *
  * Counts open real-web tabs and updates the extension's toolbar badge.
- * "Real" tabs = not chrome://, not extension pages, not about:blank.
+ * "Real" tabs = not browser-internal pages, not extension pages.
+ *
+ * 内部页的清单在 env.js 里 —— 三家浏览器的 scheme 不一样（Firefox 是
+ * moz-extension://、about:newtab），写死在这里角标就会把内部页数进去。
  */
 async function updateBadge() {
   try {
     const tabs = await chrome.tabs.query({});
+    const isInternal = bgEnv().isInternalUrl;
 
     // Only count actual web pages — skip browser internals and extension pages
-    const count = tabs.filter(t => {
-      const url = t.url || '';
-      return (
-        !url.startsWith('chrome://') &&
-        !url.startsWith('chrome-extension://') &&
-        !url.startsWith('about:') &&
-        !url.startsWith('edge://') &&
-        !url.startsWith('brave://')
-      );
-    }).length;
+    const count = tabs.filter(t => !isInternal(t.url)).length;
 
     // Don't show "0" — an empty badge is cleaner
     await chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
@@ -72,14 +88,16 @@ async function updateBadge() {
  * 快捷键触发时调用。已经开着归拢就切过去（跨窗口也行），
  * 没开就新建一个。
  *
- * 为什么不用 ⌘+1：那是 Chrome 的保留快捷键，扩展既注册不了也覆盖不了。
- * 用户可以在 chrome://extensions/shortcuts 里改成自己顺手的键。
+ * 为什么不用 ⌘+1：那是浏览器的保留快捷键，扩展既注册不了也覆盖不了。
+ * 用户在浏览器自己的快捷键设置页里改（Chrome/Edge 一个地址、Firefox 一个，
+ * 见 env.js）。
  */
 async function focusOrOpenDashboard() {
   const dashboardUrl = chrome.runtime.getURL('index.html');
+  const newtabs      = bgEnv().browserNewtabUrls;
 
   const tabs = await chrome.tabs.query({});
-  const existing = tabs.find(t => t.url === dashboardUrl || t.url === 'chrome://newtab/');
+  const existing = tabs.find(t => t.url === dashboardUrl || newtabs.indexOf(t.url) !== -1);
 
   if (existing) {
     await chrome.tabs.update(existing.id, { active: true });

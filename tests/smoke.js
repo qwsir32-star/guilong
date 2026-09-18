@@ -43,8 +43,8 @@ const code = fs.readFileSync(APP, 'utf8') + `
   dismissSavedTab, checkOffSavedTab, clearAllSavedTabs, restoreArchivedTab,
   confirmOrArm, CONFIRM_RESET_MS,
   normalizeSiteUrl, siteKey, siteLabel, getQuickSites, sameEntryUrl, originOf,
-  isSiteRoot, pathHintOf, suggestSiteName, resolveSiteIcon,
-  pinSite, unpinSite, hideTopSite, openQuickSite,
+  isSiteRoot, pathHintOf, suggestSiteName, resolveSiteIcon, faviconUrlFor, envOf,
+  pinSite, unpinSite, hideTopSite, openQuickSite, getRealTabs,
   updatePinnedSite, movePinnedSite, promoteTopSite,
   faviconSignature, dropIfDefaultFavicon,
   getUiPrefs, setUiPref, applyUiPrefs, looksLikeUrl, runSearch, focusSearchBox,
@@ -281,6 +281,15 @@ function check(label, actual, expected) {
    文件最后那行自启动的 renderDashboard() 也会走 applyStaticStrings()。
    少加载这一个文件，整套测试会因为 "T is not defined" 直接崩。 */
 vm.createContext(sandbox);
+
+/* env.js 也要先加载 —— index.html 里它排在 strings.js 前面，顺序保持一致。
+   envOf() 在拿不到 GL_ENV 时会退化成 Chromium 行为，所以不加载也能跑；
+   但 PART 14 要直接用 GL_ENV.makeEnv 造出 Firefox 的那份来断言。 */
+vm.runInContext(
+  fs.readFileSync(path.join(EXT, 'env.js'), 'utf8')
+  + ';globalThis.__env=GL_ENV;',
+  sandbox);
+
 const STRINGS_PATH = path.join(EXT, 'strings.js');
 vm.runInContext(
   fs.readFileSync(STRINGS_PATH, 'utf8') +
@@ -1934,6 +1943,184 @@ async function part13() {
     newKeys.filter(k => !(k in S.STRINGS.zh) || !(k in S.STRINGS.en)), []);
 }
 
+/* ==================================================================
+   PART 14 — 跨浏览器（Chrome / Edge / Firefox）
+
+   归拢要同时上架三家商店。绝大部分 API 三家是一样的（都走 chrome.*，
+   Firefox 把 chrome 当 browser 的别名），真正不同的只有几件小事，全部
+   收在 env.js 里。
+
+   这一组守两件事：
+     ① 行为 —— 喂 Firefox 的 UA，该变的都变了（新标签页地址、快捷键页、
+        favicon 端点），该不变的没变。
+     ② 源码 —— 不许再出现写死的 chrome-extension:// / chrome:// 地址。
+        这类写法在 Chrome 上一切正常、在 Firefox 上静默失效，是最难
+        发现的一类 bug，只能靠静态扫描兜住。
+
+   ⚠️ 扫源码前先剥注释：说明文字里提到 chrome-extension:// 会被自己的守卫点着。
+   ================================================================== */
+async function part14() {
+  console.log('\n[PART 14] 跨浏览器（Chrome / Edge / Firefox）');
+
+  const ENV_SRC  = fs.readFileSync(path.join(EXT, 'env.js'), 'utf8');
+  const APP_SRC  = fs.readFileSync(APP, 'utf8');
+  const BG_SRC   = fs.readFileSync(path.join(EXT, 'background.js'), 'utf8');
+  const STR_SRC  = fs.readFileSync(path.join(EXT, 'strings.js'), 'utf8');
+  const HTML_SRC = fs.readFileSync(path.join(EXT, 'index.html'), 'utf8');
+  const MANIFEST = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8'));
+
+  const FF_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0';
+  const CH_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
+  const ED_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0';
+
+  const makeEnv = sandbox.__env.makeEnv;
+
+  check('Firefox 的 UA 认得出来', makeEnv(FF_UA).isFirefox, true);
+  check('Chrome 的 UA 认得出来',  makeEnv(CH_UA).isFirefox, false);
+  check('Edge 的 UA 也算 Chromium', makeEnv(ED_UA).isFirefox, false);
+
+  const ff = makeEnv(FF_UA);
+  const cr = makeEnv(CH_UA);
+
+  // ---- 地址差异 ----
+  check('Firefox 的新标签页是 about:newtab / about:home',
+    ff.browserNewtabUrls, ['about:newtab', 'about:home']);
+  check('  Firefox 上没有 chrome://newtab/',
+    ff.browserNewtabUrls.includes('chrome://newtab/'), false);
+  check('Chromium 的新标签页里有 chrome://newtab/',
+    cr.browserNewtabUrls.includes('chrome://newtab/'), true);
+  check('Firefox 改快捷键去 about:addons', ff.shortcutsUrl, 'about:addons');
+  check('Chromium 改快捷键去 chrome://extensions/shortcuts',
+    cr.shortcutsUrl, 'chrome://extensions/shortcuts');
+
+  // ---- 唯一的功能差异：_favicon 只存在于 Chromium ----
+  check('Chromium 有 _favicon 端点', cr.hasFaviconEndpoint, true);
+  check('  Firefox 没有（Mozilla 没做等价物）', ff.hasFaviconEndpoint, false);
+
+  // ---- 内部页的判定 ----
+  const isInternal = sandbox.__env.isInternalUrl;
+  check('moz-extension:// 算内部页', isInternal('moz-extension://abc/index.html'), true);
+  check('  （这一条是 Firefox 的扩展页 scheme，漏了角标就会把它数进去）',
+    isInternal('moz-extension://abc/index.html'), true);
+  check('about:newtab 算内部页',  isInternal('about:newtab'), true);
+  check('about:blank 算内部页',   isInternal('about:blank'), true);
+  check('chrome:// 算内部页',     isInternal('chrome://extensions'), true);
+  check('edge:// 算内部页',       isInternal('edge://settings'), true);
+  check('https 不算内部页',       isInternal('https://example.com/a'), false);
+  check('file:// 不算内部页',     isInternal('file:///Users/a/b.html'), false);
+
+  /* ---- 行为：真实标签页的判定在 Firefox 上也要对 ----
+     openTabs 里混进一个 moz-extension:// 的（Firefox 上扩展页就是这个 scheme）
+     和一个 about:newtab —— 两个都必须被排除，只留真网页。 */
+  const savedTabs = fakeTabs;
+  fakeTabs = [
+    { id: 1, url: 'https://a.com/1', title: 'A', windowId: 1, active: true },
+    { id: 2, url: 'moz-extension://abc/index.html', title: 'B', windowId: 1, active: false },
+    { id: 3, url: 'about:newtab', title: 'C', windowId: 1, active: false },
+  ];
+  await T.fetchOpenTabs();
+  check('Firefox 的扩展页 / about:newtab 都不算真实标签页',
+    T.getRealTabs().map(t => t.url), ['https://a.com/1']);
+  fakeTabs = savedTabs;
+
+  // ---- 行为：Firefox 上不建 favicon 的 <img>，直接露首字母色块 ----
+  const savedEnv = sandbox.GL_ENV;
+  try {
+    sandbox.GL_ENV = ff;
+    check('Firefox 上 faviconUrlFor 给空串',
+      T.faviconUrlFor('https://example.com'), '');
+    check('  于是 resolveSiteIcon 也不给 img（露色块）',
+      T.resolveSiteIcon({ url: 'https://example.com' }, 'Example').img, '');
+    sandbox.GL_ENV = cr;
+    check('Chromium 上 faviconUrlFor 走 _favicon',
+      T.faviconUrlFor('https://example.com').includes('/_favicon/?pageUrl='), true);
+    check('  而且是 chrome.runtime.getURL 拼出来的，不是写死 scheme',
+      T.faviconUrlFor('https://example.com').startsWith(`chrome-extension://${EXT_ID}/_favicon/`), true);
+  } finally {
+    sandbox.GL_ENV = savedEnv;
+  }
+
+  // ---- 静态：三家地址都不许再写死在源码 / 文案里 ----
+  const strip = s => s
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
+
+  /* envOf() / bgEnv() 里那份「拿不到 env.js 时的兜底」按定义就得写死 Chromium
+     的地址 —— 那是**唯一**合法的例外。扫之前先把这两个函数体挖掉，
+     剩下任何地方都不许再出现一家的地址。 */
+  const withoutFallback = s => {
+    let out = s;
+    for (const name of ['function envOf(', 'function bgEnv(']) {
+      const i = out.indexOf(name);
+      if (i === -1) continue;
+      const j = out.indexOf('\n}', i);
+      out = out.slice(0, i) + (j === -1 ? '' : out.slice(j + 2));
+    }
+    return out;
+  };
+
+  const APP_CODE = withoutFallback(strip(APP_SRC));
+  const BG_CODE  = withoutFallback(strip(BG_SRC));
+  const STR_CODE = strip(STR_SRC);
+
+  check('app.js 里没有写死的 chrome-extension:// 拼接',
+    /['"`]chrome-extension:\/\//.test(APP_CODE), false);
+  check('  background.js 同样没有',
+    /['"`]chrome-extension:\/\//.test(BG_CODE), false);
+  check('app.js 里没有写死的 chrome://newtab/',
+    APP_CODE.includes('chrome://newtab/'), false);
+  check('  background.js 同样没有',
+    BG_CODE.includes('chrome://newtab/'), false);
+  check('app.js 里没有写死的 chrome://extensions/shortcuts',
+    APP_CODE.includes('chrome://extensions/shortcuts'), false);
+  // 内部页清单归 env.js 管：手写 startsWith('chrome:') 就等于把 Firefox 忘了
+  check('app.js 里没有手写 chrome: 前缀判断',
+    /startsWith\(\s*['"]chrome:/.test(APP_CODE), false);
+  check('  background.js 同样没有',
+    /startsWith\(\s*['"]chrome:/.test(BG_CODE), false);
+
+  // 兜底那一份必须跟 env.js 算出来的 Chromium 值一致，不然「没加载 env.js」
+  // 和「加载了」会给出两套行为，那才是真的难查
+  try {
+    sandbox.GL_ENV = undefined;
+    const fb = T.envOf();
+    check('拿不到 env.js 时兜底成 Chromium（跟 env.js 算出来的值一致）',
+      [fb.shortcutsUrl, fb.hasFaviconEndpoint, fb.browserNewtabUrls],
+      [cr.shortcutsUrl, cr.hasFaviconEndpoint, cr.browserNewtabUrls]);
+  } finally {
+    sandbox.GL_ENV = savedEnv;
+  }
+
+  // Firefox 上没有 _favicon，就不该为「默认地球图的指纹」发一次必然失败的请求
+  const gds = APP_CODE.slice(APP_CODE.indexOf('function getDefaultFaviconSignature'));
+  check('  getDefaultFaviconSignature 认 hasFaviconEndpoint（Firefox 不发无谓请求）',
+    gds.slice(0, 400).includes('hasFaviconEndpoint'), true);
+  check('文案表里没有写死任何一家的 chrome:// 地址',
+    /chrome:\/\/|moz-extension:\/\//.test(STR_CODE), false);
+  check('  快捷键那句提示用的是 {url} 占位',
+    S.STRINGS.zh['toast.shortcutUnavailable'].includes('{url}'), true);
+  check('  英文版也用 {url}',
+    S.STRINGS.en['toast.shortcutUnavailable'].includes('{url}'), true);
+
+  // ---- env.js 必须真的被引进页面，且排在 app.js 前面 ----
+  check('index.html 里引入了 env.js',
+    /<script src="env\.js"><\/script>/.test(HTML_SRC), true);
+  check('  env.js 排在 app.js 前面（app.js 顶层就要用它）',
+    HTML_SRC.indexOf('src="env.js"') < HTML_SRC.indexOf('src="app.js"'), true);
+  check('background.js 会自己拉 env.js（Chrome 的 service worker 没有 scripts 键）',
+    BG_CODE.includes("importScripts('./env.js')"), true);
+
+  // ---- manifest：三家都支持的那些东西不许丢 ----
+  check('manifest 用 chrome_url_overrides 抢新标签页（三家都支持）',
+    MANIFEST.chrome_url_overrides && MANIFEST.chrome_url_overrides.newtab, 'index.html');
+  check('topSites 权限还在（Chrome 28+ / Firefox 63+ 都有）',
+    (MANIFEST.permissions || []).includes('topSites'), true);
+  check('search 权限还在（Chrome 87+ / Edge 87+ / Firefox 111+ 都有）',
+    (MANIFEST.permissions || []).includes('search'), true);
+  check('env.js 是有内容的（不是空文件占位）',
+    ENV_SRC.includes('hasFaviconEndpoint') && ENV_SRC.includes('browserNewtabUrls'), true);
+}
+
 (async () => {
   await part2();
   console.log('  （存完就关后剩下的标签页：' +
@@ -1949,6 +2136,7 @@ async function part13() {
   await part11();
   await part12();
   await part13();
+  await part14();
 
   console.log('\n' + (failed === 0 ? '全部通过' : `${failed} 条不符合预期`));
   process.exit(failed === 0 ? 0 : 1);

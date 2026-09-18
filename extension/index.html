@@ -304,6 +304,10 @@
      NOTE: do NOT add onerror="..." here — MV3's default CSP (script-src 'self')
      blocks inline event handlers, so it would never run and would log
      "Refused to execute inline event handler" on every new tab. -->
+<!-- 浏览器环境判定（Chrome / Edge / Firefox 的差异全在这一个文件里）。
+     ⚠️ 必须在 app.js 之前：app.js 顶层就要用它算 SHORTCUTS_URL。 -->
+<script src="env.js"></script>
+
 <script src="config.local.js"></script>
 
 <!-- 文案表 —— 必须在 app.js 之前。所有给人看的字都在这里，

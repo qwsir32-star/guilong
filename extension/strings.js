@@ -69,9 +69,10 @@ const STRINGS = {
 
     /* ---- 快捷键（设置面板里那一行）
        注意这一行不是开关：Chrome 不允许扩展改自己的快捷键，
-       所以只能「显示当前值 + 送你到 Chrome 的页面去改」。 */
+       所以只能「显示当前值 + 送你到浏览器的页面去改」。
+       文案里不写死「Chrome」—— Firefox 上也跑，那边跳的是 about:addons。 */
     'settings.shortcut.name':   '呼出快捷键',
-    'settings.shortcut.desc':   '按一下就打开归拢。Chrome 不允许扩展自己改快捷键，所以这里只能看 —— 点右边去 Chrome 的页面设一次，回到这里会自动更新。',
+    'settings.shortcut.desc':   '按一下就打开归拢。浏览器不允许扩展自己改快捷键，所以这里只能看 —— 点右边去快捷键设置页设一次，回到这里会自动更新。',
     'settings.shortcut.change': '去设置',
     'settings.shortcut.unset':  '未设置',
 
@@ -229,7 +230,9 @@ const STRINGS = {
     'toast.confirmCloseAll':   '确认关闭 {n} 个标签页？再点一次',
     'toast.closedAll':         '已关闭 {n} 个标签页',
     'toast.closedExtras':      '已关掉多余的归拢标签页',
-    'toast.shortcutUnavailable': '没能打开 Chrome 的快捷键页面，请在地址栏手动输入 chrome://extensions/shortcuts',
+    // {url} 由 env.js 给：Chrome/Edge 是 chrome://extensions/shortcuts，
+    // Firefox 是 about:addons。文案里不许写死任何一家的地址。
+    'toast.shortcutUnavailable': '没能打开快捷键设置页，请在地址栏手动输入 {url}',
     // 选了城市但这一趟没查到天气时才提示。平时拉取失败是**静默**的：
     // 新标签页上不该因为一次网络抖动就弹一个错误条。
     'toast.weatherPlaceSet':   '天气城市已改为 {city}',
@@ -266,7 +269,7 @@ const STRINGS = {
     'settings.searchBox.desc':  'Search straight from the new tab, using your own default search engine.',
 
     'settings.shortcut.name':   'Open shortcut',
-    'settings.shortcut.desc':   "Opens Guilong in one keystroke. Chrome doesn't let an extension change its own shortcut, so this is read-only — click through to Chrome's page to set one; it updates here when you come back.",
+    'settings.shortcut.desc':   "Opens Guilong in one keystroke. Browsers don't let an extension change its own shortcut, so this is read-only — click through to the browser's shortcuts page to set one; it updates here when you come back.",
     'settings.shortcut.change': 'Set it',
     'settings.shortcut.unset':  'Not set',
 
@@ -403,7 +406,7 @@ const STRINGS = {
     'toast.confirmCloseAll':   'Close {n} tabs? Click again to confirm',
     'toast.closedAll':         'Closed {n} tabs',
     'toast.closedExtras':      'Closed extra Guilong tabs',
-    'toast.shortcutUnavailable': "Couldn't open Chrome's shortcuts page — type chrome://extensions/shortcuts in the address bar",
+    'toast.shortcutUnavailable': "Couldn't open the shortcuts page — type {url} in the address bar",
     'toast.weatherPlaceSet':   'Weather city set to {city}',
     'toast.weatherPlaceFailed':"Couldn't load the weather — try again later",
 
