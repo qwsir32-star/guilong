@@ -25,6 +25,8 @@
  *   PART 11 当地天气（本地城市库 / 缓存 / 失败要安静）
  *   PART 12 主题色（解析 / 落 <html> / localStorage 镜像 / 主题块只写三元组）
  *   PART 13 稍后再看 / 归档（一键删除 / 归档还原 / 确认态 / 文案）
+ *   PART 14 跨浏览器（env.js 判定 / Firefox 差异 / README 的加载路径）
+ *   PART 15 字体自托管（Mac / Windows 一致 + 零网络请求）
  */
 const fs = require('fs');
 const path = require('path');
@@ -2128,6 +2130,29 @@ async function part14() {
     (MANIFEST.permissions || []).includes('search'), true);
   check('env.js 是有内容的（不是空文件占位）',
     ENV_SRC.includes('hasFaviconEndpoint') && ENV_SRC.includes('browserNewtabUrls'), true);
+
+  // ---- README 里 Firefox 的加载路径必须指向 dist/firefox 那份 ----
+  /* 踩过的坑：README 曾写「选 extension/manifest.json」。那份是 Chromium 的，
+     Firefox 不认 background.service_worker（它跑 background.scripts），塞给它
+     后台根本不启动 —— 页面看着正常，但角标不动、快捷键无效。这是最难查的那种
+     半残：没有任何报错，只是少了一半功能。这条守的是文档指错文件。 */
+  /* 只扫「2. Firefox：」那一行。整篇 README 里还有一句「不要选
+     extension/manifest.json」的警告 —— 按全文扫会把自己点着（踩过一次）。 */
+  const README_SRC = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  const fxStep = README_SRC.split('\n').find(l => l.indexOf('2. Firefox：') === 0) || '';
+  check('README 有 Firefox 那一步', fxStep.length > 0, true);
+  check('  Firefox 步骤指向 dist/firefox/manifest.json',
+    fxStep.includes('dist/firefox/manifest.json'), true);
+  check('  Firefox 步骤不许指向 extension/manifest.json（那份没有后台）',
+    fxStep.includes('extension/manifest.json'), false);
+  check('  Firefox 步骤要求先打包（产物才带 gecko 那份 manifest）',
+    fxStep.includes('build-store.js'), true);
+  check('README 里警告了别选 Chromium 那份',
+    README_SRC.includes('不要选'), true);
+  check('README 链接到了 Firefox 安装指南',
+    README_SRC.includes('docs/firefox-安装指南.md'), true);
+  check('docs/firefox-安装指南.md 存在',
+    fs.existsSync(path.join(ROOT, 'docs', 'firefox-安装指南.md')), true);
 }
 
 /* ==================================================================

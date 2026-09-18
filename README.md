@@ -23,8 +23,12 @@ git clone https://github.com/qwsir32-star/guilong.git
 ```
 
 1. Chrome / Edge：打开 `chrome://extensions`（Edge 是 `edge://extensions`），开**开发者模式** → **加载已解压的扩展程序** → 选 `extension/` 文件夹
-2. Firefox：打开 `about:debugging#/runtime/this-firefox` → **临时载入附加组件** → 选 `extension/manifest.json`
+2. Firefox：先跑 `node tools/build-store.js`，再打开 `about:debugging#/runtime/this-firefox` → **载入临时扩展** → 选 **`dist/firefox/manifest.json`**
 3. 开一个新标签页
+
+> ⚠️ Firefox 不要选 `extension/manifest.json` —— 那份是 Chromium 的，Firefox 不认
+> `background.service_worker`（它跑 `background.scripts`），塞给它后台根本不启动：
+> 页面看着正常，但角标不动、快捷键无效。完整说明见 [Firefox 安装指南](docs/firefox-安装指南.md)。
 
 > 改完代码只点扩展卡片上的刷新**不一定生效**：新标签页有缓存，要**关掉旧的新标签页重新开一个**。
 
@@ -88,6 +92,7 @@ node tests/smoke.js           # → 冒烟测试，无依赖、不联网、一�
 
 ## 更多
 
+- [Firefox 安装指南](docs/firefox-安装指南.md) —— 签名、临时加载、不公开分发，以及 Firefox 上的三处差异
 - [天气：数据从哪来，以及它为什么不问你要权限](docs/天气.md)
 - [快捷键：为什么只能「显示」，改要去浏览器自己的页面](docs/快捷键.md)
 - [工程笔记](docs/工程笔记.md) —— 工作方式、技术栈、测试、目录结构、扩展 ID 与 `key`、个性化配置
