@@ -37,7 +37,7 @@ const crypto = require('crypto');
 const ROOT = path.join(__dirname, '..');
 const EXT  = path.join(ROOT, 'extension');
 const OUT_DIR = path.join(ROOT, '..', 'outputs');
-const OUT  = path.join(OUT_DIR, 'guilong-全新安装预览.html');
+const OUT_DEFAULT = path.join(OUT_DIR, 'guilong-全新安装预览.html');
 const CACHE = path.join(OUT_DIR, '.screenshot-page-cache');
 
 const read = f => fs.readFileSync(path.join(EXT, f), 'utf8');
@@ -102,6 +102,70 @@ const DEMO_TABS = [
   ['https://developer.mozilla.org/zh-CN/docs/Web/API/URL', 'URL - Web API | MDN'],
 
   /* ── Stack Overflow：3 条 ── */
+  ['https://stackoverflow.com/questions/73430000/chrome-tabs-query-in-mv3',
+   'chrome.tabs.query in MV3 - SO'],
+  ['https://stackoverflow.com/questions/73430001/favicon-failed-to-load',
+   'Favicon failed to load - SO'],
+  ['https://stackoverflow.com/questions/73430002/mv3-inline-script-blocked',
+   'MV3 inline script blocked - SO'],
+];
+
+/* ══════════════════════════════════════════════════════════════════
+   演示数据 · 第二套：专门造出「+N 折叠 chip」和「重复」的 UI
+   ══════════════════════════════════════════════════════════════════
+
+   ⚠️ 这两个画面**看不见是因为数据不够，不是因为功能没做**。触发条件是
+   从 app.js 里读出来的，不是我拍的：
+
+     · `app.js:1711`  `const visibleTabs = uniqueTabs.slice(0, 8)`
+       → 同一域名**超过 8 个不同网址**，才 fold 出「还有 N 个」
+     · `app.js:1686`  `dupeUrls = Object.entries(urlCounts).filter(([, c]) => c > 1)`
+       → 同一域名里有**完全相同的网址**，卡片才会有：橙色状态条（`has-amber-bar`）、
+         琥珀色「N 个重复」徽章、chip 上的 `(2x)`、以及「关闭 N 个重复」按钮
+
+   ⚠️ 别把「重复」和 `#tabOutDupeBanner` 搞混 —— 那个横幅管的是
+   「你开了好几个**归拢页**」（`app.js:1613` 按 `t.isTabOut` 过滤，判据是
+   URL 等于扩展自己的新标签页），跟「同一网址开两次」是两回事。
+   商店截图里不该出现那种「你开多了」的提示。
+
+   所以 github 一家开 13 条（其中第一条开两次 = 12 个不同网址 + 1 个重复），
+   一张卡上同时把两样都带出来。其余 5 家维持常规的 3 条，让这页仍然像
+   「一个标签页开太多的普通人的仪表盘」，而不是为演示而演示。 */
+const DEMO_TABS_FOLDED = [
+  /* ── GitHub：13 条 → 12 个不同网址（触发「还有 4 个」）+ 1 个重复（触发重复 UI） ── */
+  ['https://github.com/qwsir32-star/guilong',     'qwsir32-star/guilong'],
+  ['https://github.com/qwsir32-star/guilong',     'qwsir32-star/guilong'],   // ← 就是这一条重复
+  ['https://github.com/notifications',            'Notifications · GitHub'],
+  ['https://github.com/trending/javascript',      'Trending · GitHub'],
+  ['https://github.com/microsoft/vscode',         'microsoft/vscode'],
+  ['https://github.com/vercel/next.js',           'vercel/next.js'],
+  ['https://github.com/tailwindlabs/tailwindcss', 'tailwindlabs/tailwindcss'],
+  ['https://github.com/electron/electron',        'electron/electron'],
+  ['https://github.com/prettier/prettier',        'prettier/prettier'],
+  ['https://github.com/eslint/eslint',            'eslint/eslint'],
+  ['https://github.com/vitejs/vite',              'vitejs/vite'],
+  ['https://github.com/rollup/rollup',            'rollup/rollup'],
+  ['https://github.com/mozilla/pdf.js',           'mozilla/pdf.js'],
+
+  /* ── 以下 5 家维持常规，只是让页面像真的 ── */
+  ['https://www.bilibili.com/video/BV1xx411c7mD',      '【4K】城市夜景漫步_哔哩哔哩'],
+  ['https://www.bilibili.com/video/BV1yy411c7mE',      '前端工程师的一天_哔哩哔哩'],
+  ['https://search.bilibili.com/all?keyword=浏览器扩展', '浏览器扩展-哔哩哔哩'],
+
+  ['https://www.zhihu.com/question/19550224',   '好用的新标签页扩展？ - 知乎'],
+  ['https://zhuanlan.zhihu.com/p/123456789',    '标签页开太多怎么办 - 知乎'],
+  ['https://www.zhihu.com/question/20000000',   '为什么程序员爱攒标签页 - 知乎'],
+
+  ['https://juejin.cn/post/7000000000000000001', 'MV3 的 CSP 有哪些坑 - 掘金'],
+  ['https://juejin.cn/post/7000000000000000002', '用 DevTools 调试扩展 - 掘金'],
+  ['https://juejin.cn/post/7000000000000000003', 'chrome.storage 容量限制 - 掘金'],
+
+  ['https://developer.mozilla.org/zh-CN/docs/Mozilla/Add-ons/WebExtensions/API/tabs',
+   'tabs API - MDN'],
+  ['https://developer.mozilla.org/zh-CN/docs/Mozilla/Add-ons/WebExtensions/manifest.json',
+   'manifest.json - MDN'],
+  ['https://developer.mozilla.org/zh-CN/docs/Web/API/URL', 'URL - Web API | MDN'],
+
   ['https://stackoverflow.com/questions/73430000/chrome-tabs-query-in-mv3',
    'chrome.tabs.query in MV3 - SO'],
   ['https://stackoverflow.com/questions/73430001/favicon-failed-to-load',
@@ -193,7 +257,13 @@ async function grabFavicon(host) {
    三、主流程
    ══════════════════════════════════════════════════════════════════ */
 
-(async () => {
+async function buildPage(DEMO_TABS, cfg) {
+  const OUT          = cfg.out || OUT_DEFAULT;
+  const LABEL        = cfg.label;
+  const minTabs      = cfg.minTabs      ?? 15;
+  const minDomains   = cfg.minDomains   ?? 6;
+  const maxPerDomain = cfg.maxPerDomain ?? 3;
+
   const indexHtml = read('index.html');
   const manifest  = JSON.parse(read('manifest.json'));
 
@@ -438,18 +508,15 @@ async function grabFavicon(host) {
     ['桩排在 app.js 之前', html.indexOf('window.chrome =') < html.indexOf('/* app.js */')],
     ['没有残留 _favicon 外链', !/href="_favicon/.test(html)],
     ['字体已内联（有 data:font/woff2）', /data:font\/woff2;base64/.test(html)],
-    ['demo 标签页数量 ≥ 15', DEMO_TABS.length >= 15],
-    ['demo 覆盖 ≥ 6 个域名', hosts.length >= 6],
+    [`demo 标签页数量 ≥ ${minTabs}`, DEMO_TABS.length >= minTabs],
+    [`demo 覆盖 ≥ ${minDomains} 个域名`, hosts.length >= minDomains],
     // 版式约束（见 DEMO_TABS 上方的推算）：每域名 ≤ 3 条，四列才排得平、整页才进得了 800。
     // ⚠️ 只能按**域名**近似判 —— 真正分列是按 siteKey 归并后的**站点**数，
     //    这里算不出来（子域归并规则在 app.js 里，且要区分 com.cn 这类多段后缀）。
     //    所以「排得平不平」以真机测量的结果为准，不靠这条断言。
-    ['每个域名 ≤ 3 条（超过就会把整页顶出 800px）',
-      (function () {
-        const c = {};
-        DEMO_TABS.forEach(([u]) => { const h = new URL(u).hostname; c[h] = (c[h] || 0) + 1; });
-        return Object.values(c).every(n => n <= 3);
-      })()],
+    // ⚠️ 「每域名 ≤ N 条」那条**不在这里** —— 第二套数据故意在 github 上堆 13 条，
+    //    那正是它存在的理由。给第二套传 `maxPerDomain: Infinity` 就直接**不加**这条，
+    //    而不是加一条恒真的凑数（恒真的断言只是装饰）。见下面 checks.push 那段。
     ['桩里没有预置 uiPrefs（空存储才是全默认）', !/uiPrefs\s*:/.test(STUB)],
     ['桩里没有预置 weatherLocation', !/weatherLocation\s*:/.test(STUB)],
     ['favicon 全是真图片（data:image/ 开头，不是 HTTP 错误页）',
@@ -469,6 +536,22 @@ async function grabFavicon(host) {
         return Object.values(byHash).every(n => n <= 2);
       })()],
   ];
+
+  /* 「每域名 ≤ N 条」只在数据本来就该整齐时才有意义。第二套数据故意不整齐，
+     所以**不加**这条 —— 加一条恒真的进来就是装饰，不是守卫。 */
+  if (maxPerDomain !== Infinity) {
+    checks.push([`每个域名 ≤ ${maxPerDomain} 条（超过就会把整页顶出 800px）`,
+      (function () {
+        const c = {};
+        DEMO_TABS.forEach(([u]) => { const h = new URL(u).hostname; c[h] = (c[h] || 0) + 1; });
+        return Object.values(c).every(n => n <= maxPerDomain);
+      })()]);
+  }
+
+  /* 变体自己的断言。第二套必须真的含「一个域名 >8 个不同网址」和「某网址开了两次」——
+     否则那页照样**生成成功**，只是什么也演示不出来，而这种失败最难发现。 */
+  if (cfg.checks) checks.push(...cfg.checks(DEMO_TABS, hosts));
+
   const bad = checks.filter(([, ok]) => !ok).map(([n]) => n);
   if (bad.length) { console.error('❌ 自检没过：\n  - ' + bad.join('\n  - ')); process.exit(1); }
 
@@ -476,21 +559,74 @@ async function grabFavicon(host) {
   fs.writeFileSync(OUT, html);
 
   console.log('');
-  console.log('✅ ' + OUT);
+  console.log('✅ [' + LABEL + '] ' + OUT);
   console.log('   ' + (html.length / 1024).toFixed(0) + ' KB（其中字体 ' + (fontBytes / 1024).toFixed(0) + ' KB）');
   console.log('   自检 ' + checks.length + ' 条全过');
   console.log('');
-  console.log('这一页会显示（全部是出厂默认）：');
-  console.log('   · 纸感主题；演示数据是 ' + hosts.length + ' 个域名 / ' + DEMO_TABS.length +
+  console.log('这一页会显示（' + cfg.blurbTitle + '）：');
+  console.log('   · 演示数据 ' + hosts.length + ' 个域名 / ' + DEMO_TABS.length +
               ' 个标签页（页面按 siteKey 归并后站点数会更少，子域会并进主域）');
-  console.log('   · 搜索框、常用站点条 —— 默认关着，所以看不到（这是真的默认状态）');
-  console.log('   · 稍后再看 / 归档 —— 全新安装本来就是空的');
-  console.log('   · 天气：固定读数（多云 24°，上海），不联网');
+  (cfg.blurb || []).forEach(l => console.log('   · ' + l));
   /* ⚠️ 分子必须是**抓到图标的域名数**（fetched.size），不是 Object.keys(faviconMap).length ——
      后缀登记会往表里多插键（bilibili.com 这类主域），拿它当分子就会印出「14/10」这种
      看着像 bug、其实只是指标用错的数。 */
   console.log('   · favicon：' + fetched.size + '/' + hosts.length + ' 个域名抓到（查找表 ' +
               Object.keys(faviconMap).length + ' 个键，多出来的是给子域兜底的主域名），其余露首字母色块');
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   四、两套页面
+   ══════════════════════════════════════════════════════════════════
+
+   为什么是**两个文件**而不是一页：第一套的全部价值就是「一屏拍全 + 全默认」，
+   往里塞一个 13 条标签页的域名，那张卡立刻蹿到 ~490px，把它自己的价值毁掉；
+   而第二套要的恰恰就是那张蹿起来的卡。两个诉求互斥，所以分成两页。
+
+   （也想过一页里加个「切换数据」的悬浮按钮 —— 但那个按钮自己会进画面，
+     拍摄用的页面不能有任何不属于产品的东西。） */
+const VARIANTS = [
+  {
+    label: '默认',
+    out:   OUT_DEFAULT,
+    tabs:  DEMO_TABS,
+    blurbTitle: '全部是出厂默认',
+    blurb: [
+      '纸感主题',
+      '搜索框、常用站点条 —— 默认关着，所以看不到（这是真的默认状态）',
+      '稍后再看 / 归档 —— 全新安装本来就是空的',
+      '天气：固定读数（多云 24°，上海），不联网',
+    ],
+  },
+  {
+    label: '折叠与重复',
+    out:   path.join(OUT_DIR, 'guilong-折叠与重复预览.html'),
+    tabs:  DEMO_TABS_FOLDED,
+    minTabs: 12, minDomains: 3, maxPerDomain: Infinity,
+    blurbTitle: '专门要演示的那两样摆出来（其余仍是出厂默认）',
+    blurb: [
+      'github 一家 13 条 → 12 个不同网址，卡里出现「还有 4 个」折叠 chip',
+      '其中一条网址开了两次 → 卡片带橙条 +「1 个重复」徽章 + chip 上的 (2x) +「关闭 1 个重复」按钮',
+      '⚠️ 这不是 #tabOutDupeBanner —— 那个横幅管的是「你开了多个归拢页」，两回事',
+    ],
+    /* 下面两条是这套数据的**存在理由**，所以必须断言它们真的成立：
+       数据被人改坏时页面照样生成成功，只是什么也演示不出来 —— 那种失败最难发现。 */
+    checks: (tabs) => {
+      const byHost = {};
+      tabs.forEach(([u]) => { const h = new URL(u).hostname; (byHost[h] = byHost[h] || []).push(u); });
+      const folded = Object.entries(byHost).find(([, us]) => new Set(us).size > 8);
+      const duped  = Object.entries(byHost).find(([, us]) => us.length !== new Set(us).size);
+      return [
+        ['数据里有域名开了 >8 个不同网址（否则折叠 chip 不会出现）' +
+          (folded ? `：${folded[0]} 共 ${new Set(folded[1]).size} 个` : ''), !!folded],
+        ['数据里有网址开了两次（否则橙条 /「N 个重复」/「关闭 N 个重复」都不会出现）' +
+          (duped ? `：${duped[0]}` : ''), !!duped],
+      ];
+    },
+  },
+];
+
+(async () => {
+  for (const v of VARIANTS) await buildPage(v.tabs, v);
   console.log('');
-  console.log('要改演示数据就改本文件顶部的 DEMO_TABS，重跑一次即可。');
-})();
+  console.log('要改演示数据就改本文件顶部的 DEMO_TABS / DEMO_TABS_FOLDED，重跑一次即可。');
+})().catch(e => { console.error('❌ ' + ((e && e.stack) || e)); process.exit(1); });
