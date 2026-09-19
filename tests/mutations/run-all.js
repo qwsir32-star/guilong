@@ -28,17 +28,37 @@ if (files.length === 0) {
 console.log(`跑 ${files.length} 份变异脚本…\n`);
 const failed = [];
 
+/* 摘要行怎么挑 —— 这比看上去重要。
+
+   每份脚本自己打印格式，一共三种收尾：
+     · 「全部 N 条变异都被抓住了」/「N 条变异没被抓住」   （weather / theme / …）
+     · 「结果：N 条按预期 / M 条没按预期 / K 条没生效。」（language / settingsmodal / …）
+     · 「OK  基线：全绿  退出码 0」                      （shortcut / toolbar）
+   原来只认 `条变异|没被抓住|基线`。**「基线」这个词太宽**：多数脚本开头都会打一行
+   「✅ 基线绿」，于是 filter().pop() 抓到的是**基线那行**，不是结论 ——
+   失败时会打成 `✗ ✅ 基线绿`，读起来像「只有基线过了」。
+   现在：先找「真正的结论行」（必须提到条数或结果），找不到才退到末行。 */
+const verdictOf = (out) => {
+  const ls = String(out || '').trim().split('\n').map(s => s.trim()).filter(Boolean);
+  const strong = ls.filter(l =>
+    /条变异/.test(l) || /条按预期/.test(l) || /^\s*结果：/.test(l) || /守卫都真的在守/.test(l));
+  return (strong.length ? strong[strong.length - 1] : (ls[ls.length - 1] || ''));
+};
+
 for (const f of files) {
   process.stdout.write(`▶ ${f.padEnd(20)} `);
   // 每份自己会打到 /tmp，互不干扰
   const r = spawnSync(process.execPath, [path.join(DIR, f)], { encoding: 'utf8' });
-  const lines = String(r.stdout || '').trim().split('\n');
-  const verdict = lines.filter(l => /条变异|没被抓住|基线/.test(l)).pop() || lines.pop() || '';
+  const verdict = verdictOf(r.stdout);
 
   if (r.status === 0) {
-    console.log('✓  ' + verdict.trim().slice(0, 70));
+    console.log('✓  ' + verdict.slice(0, 70));
   } else {
-    console.log('✗  ' + (verdict.trim() || String(r.stderr || '').trim()).slice(0, 70));
+    console.log('✗  ' + (verdict || String(r.stderr || '').trim() || '(无输出)').slice(0, 70));
+    // 挂了就得能查。把末几行原样带出来，省得再单独跑一遍（单跑要一分钟起）。
+    const tail = String(r.stdout || '').trim().split('\n').slice(-3)
+      .map(s => '        ' + s.trim()).join('\n');
+    if (tail.trim()) console.log(tail);
     failed.push(f);
   }
 }
