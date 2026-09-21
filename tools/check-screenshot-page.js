@@ -19,7 +19,13 @@
    跑法（⚠️ 必须脱离沙箱：Chrome 要写 ~/Library/Application Support/Google/RLZ）：
      node tools/check-screenshot-page.js
    可覆盖：GL_CHROME（Chrome 可执行文件）、GL_OUT（截图输出目录）、
-           GL_ONLY（只跑某一页，按 label 关键字，如 GL_ONLY=折叠）
+           GL_ONLY（只跑某一页，按 label 关键字，如 GL_ONLY=折叠）、
+           GL_SCALE（截图倍率，默认 2）
+
+   README 用的那两张图就是这么来的（1x，正好 1280x800）：
+     GL_OUT=$PWD/docs/images GL_SCALE=1 node tools/check-screenshot-page.js
+   用**演示数据页**而不是真机截图：真机截图里是使用者真实开着的站点和页面标题，
+   放进公开仓库等于把浏览记录发出去。
    ===================================================================== */
 const { spawn } = require('child_process');
 const fs   = require('fs');
@@ -34,6 +40,11 @@ const OUT_DIR = path.join(__dirname, '..', '..', 'outputs');
 // ⚠️ 不要把图丢进 outputs/guilong-fresh-install/ —— 那是 check-fresh-install.js
 //    用**真扩展 + 全新 profile** 拍的（空状态），跟这里的「演示数据页」是两回事。
 const OUT = process.env.GL_OUT || path.join(OUT_DIR, 'guilong-screenshot-page');
+
+/* 截图倍率。默认 2x（验证时看得清细节）；README 要的图用 1x，
+   这样拍出来正好是 1280x800，不用再缩一道。
+   跑法：GL_OUT=<仓库>/docs/images GL_SCALE=1 node tools/check-screenshot-page.js */
+const SCALE = Number(process.env.GL_SCALE || 2);
 
 const VIEWPORT = { width: 1280, height: 800 };
 
@@ -142,7 +153,7 @@ async function checkPage(cdp, cfg) {
 
   // 视口锁死 —— 截图口径必须确定，否则「刚好放得下」每次都不一样
   await cdp.send('Emulation.setDeviceMetricsOverride',
-    { ...VIEWPORT, deviceScaleFactor: 2, mobile: false }, S);
+    { ...VIEWPORT, deviceScaleFactor: SCALE, mobile: false }, S);
 
   await cdp.send('Page.navigate', { url: pathToFileURL(cfg.file).href }, S);
   for (let i = 0; i < 60; i++) {

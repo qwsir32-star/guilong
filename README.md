@@ -26,7 +26,9 @@
 
 顺眼的留着，不顺眼的关掉。常用站点条、搜索框、天气都能单独关，主题色八套，中英双语。
 
-<!-- 演示：真机截图或录屏放这儿（默认主题 / 深色主题 / 设置面板各一张），放完删掉这行注释 -->
+<p align="center">
+  <img src="docs/images/preview-default.png" width="760" alt="归拢的新标签页：此刻开着的标签页按域名收进一张张卡片，网格摊开">
+</p>
 
 ## 目录
 
@@ -66,13 +68,22 @@
 | 工具栏图标 | 点一下把面板叫出来，角标显示标签页数 |
 | 中英双语 | 默认跟随系统 |
 
+<p align="center">
+  <img src="docs/images/preview-folded.png" width="760" alt="同一个站开超过 8 个标签页时折叠成「还有 4 个」；同一个网址开了两次会被标出橙条、「1 个重复」和 (2x)">
+</p>
+
+<p align="center"><sub>同一个站开得太多会折叠起来；开重了的会被标出来，一键只留一份</sub></p>
+
 **不做什么**：不做同步，没有账号，换台电脑要重新钉一遍；不整理浏览历史，只管你此刻开着的那些；也不是书签管理器的替代品，「稍后再看」是给没看完的标签页用的临时清单。
 
 ## 安装
 
-### 从商店装
+### 从打包好的 zip 装（最省事）
 
-最省事。Chrome、Edge、Firefox 三家上架之后，链接会补在这里。
+到 [Releases](https://github.com/qwsir32-star/guilong/releases) 下载对应浏览器的 zip，解压，然后：
+
+- **Chrome / Edge**：打开 `chrome://extensions`（Edge 是 `edge://extensions`），右上角打开「开发者模式」，点「加载已解压的扩展程序」，选解压出来的那个文件夹。
+- **Firefox**：Firefox 不给未签名的扩展长期安装，zip 要签名才能装，见 [Firefox 安装指南](docs/firefox-安装指南.md)。
 
 ### 从源码装
 
@@ -80,17 +91,17 @@
 git clone https://github.com/qwsir32-star/guilong.git
 ```
 
-- **Chrome / Edge**：打开 `chrome://extensions`（Edge 是 `edge://extensions`），右上角打开「开发者模式」，点「加载已解压的扩展程序」，选 `extension/` 文件夹。
-- **Firefox**：多一步打包，见 [Firefox 安装指南](docs/firefox-安装指南.md)。
+- **Chrome / Edge**：同上，只不过选的是仓库里的 `extension/` 文件夹。
+- **Firefox**：同上，先看 [Firefox 安装指南](docs/firefox-安装指南.md)。
 
 装完打开一个新标签页，看到的就是归拢。
 
-要打商店包或者跑测试：
+要自己打包或者跑测试：
 
 ```bash
-node tools/build-store.js          # 出 dist/ 下三个商店包
+node tools/build-store.js          # 打成三个可分发的 zip（chrome / edge / firefox）
 node tests/smoke.js                # 冒烟测试 + 静态守卫，零依赖，跑完 0.2 秒
-node tests/mutations/run-all.js    # 变异测试：证明每条守卫坏掉时真的会变红
+node tests/mutations/run-all.js    # 变异测试：证明每条守卫坏掉时真的会变红（十几分钟）
 ```
 
 > 「全新安装」和「图标有没有偷偷联网」另有两个脚本，要真机跑，见
