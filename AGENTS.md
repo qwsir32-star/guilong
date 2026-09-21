@@ -19,7 +19,7 @@
 > - **当地天气** 页头下面一行气温和天气，城市搜着选，默认上海，可关
 > - **不需要 API key** 没有服务器、不用账号
 >
-> 就是一个 Chrome 扩展，装起来大约 1 分钟。
+> 就是一个浏览器扩展，Chrome / Edge / Firefox 都能装，装起来大约 1 分钟。
 
 ---
 
@@ -33,6 +33,12 @@ cd guilong
 ---
 
 ## Step 2 -- 装扩展
+
+⚠️ **这一套是 Chrome / Edge 的。Firefox 强制签名，路径完全不同**：先
+`node tools/build-store.js`，然后让用户照 [Firefox 安装指南](docs/firefox-安装指南.md)
+用 `about:debugging` 临时加载 **`dist/firefox/manifest.json`**（**不是**
+`extension/manifest.json` —— 那份是 Chromium 的，background 在 Firefox 上根本不会启动，
+表现是「页面能开、但角标不动、快捷键无效」，安静地坏一半）。
 
 这一步必须用户自己动手。尽量让过程省事，别让他在文件选择框里翻目录。
 
@@ -170,7 +176,7 @@ open "chrome://extensions"
 - ⚠️ 设置面板的分隔线用的是 `.setting-row ~ .setting-row`，不是 `+`。城市搜索结果
   （`#weatherResults`）夹在城市行和快捷键行之间，用 `+` 的话快捷键那行的上分隔线会**静默消失** ——
   不报错，只是变丑。
-- **改完代码跑一遍 `node tests/smoke.js`**（312 处断言，有几条在循环里，实际跑 340 条；零依赖、
+- **改完代码跑一遍 `node tests/smoke.js`**（578 处断言，有几条在循环里；零依赖、
   一秒跑完；其中网络和图片是受控的假环境，不会真的联网）：
   它既验证内部纯函数的行为，也扫描源码守住「文案必须走 `strings.js`」「页头版式不变量」
   「旧品牌名不许回流」这几条约定。它不点界面，所以**不能替代手动加载扩展看一眼**。

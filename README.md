@@ -34,9 +34,9 @@
 
 ## 目录
 
+- [安装](#安装)
 - [为什么做这个](#为什么做这个)
 - [功能](#功能)
-- [安装](#安装)
 - [浏览器支持](#浏览器支持)
 - [设置](#设置)
 - [常见问题](#常见问题)
@@ -44,6 +44,29 @@
 - [参与](#参与)
 - [致谢](#致谢)
 - [许可证](#许可证)
+
+## 安装
+
+### 把仓库链接甩给你的本地 agent
+
+归拢带了一份写给编码 agent 的安装手册（[AGENTS.md](./AGENTS.md)）。把这个链接发给 Claude Code、Codex、Cursor 这类 agent：
+
+```
+https://github.com/qwsir32-star/guilong
+```
+
+它会克隆仓库、把 `extension/` 加载成扩展，再带你过一遍界面。全程大约一分钟，不用你在文件选择框里翻目录。这条路是按 Chrome / Edge 写的，Firefox 走下面那条。
+
+### 自己动手装
+
+```bash
+git clone https://github.com/qwsir32-star/guilong.git
+```
+
+- **Chrome / Edge**：打开 `chrome://extensions`（Edge 是 `edge://extensions`），右上角打开「开发者模式」，点「加载已解压的扩展程序」，选仓库里的 `extension/` 文件夹。
+- **Firefox**：Firefox 不给未签名的扩展长期安装，要先打包再临时加载，见 [Firefox 安装指南](docs/firefox-安装指南.md)。
+
+装完打开一个新标签页，看到的就是归拢。
 
 ## 为什么做这个
 
@@ -77,37 +100,6 @@
 <p align="center"><sub>同一个站开得太多会折叠起来；开重了的会被标出来，一键只留一份</sub></p>
 
 **不做什么**：不做同步，没有账号，换台电脑要重新钉一遍；不整理浏览历史，只管你此刻开着的那些；也不是书签管理器的替代品，「稍后再看」是给没看完的标签页用的临时清单。
-
-## 安装
-
-### 从打包好的 zip 装（最省事）
-
-到 [Releases](https://github.com/qwsir32-star/guilong/releases) 下载对应浏览器的 zip，解压，然后：
-
-- **Chrome / Edge**：打开 `chrome://extensions`（Edge 是 `edge://extensions`），右上角打开「开发者模式」，点「加载已解压的扩展程序」，选解压出来的那个文件夹。
-- **Firefox**：Firefox 不给未签名的扩展长期安装，zip 要签名才能装，见 [Firefox 安装指南](docs/firefox-安装指南.md)。
-
-### 从源码装
-
-```bash
-git clone https://github.com/qwsir32-star/guilong.git
-```
-
-- **Chrome / Edge**：同上，只不过选的是仓库里的 `extension/` 文件夹。
-- **Firefox**：同上，先看 [Firefox 安装指南](docs/firefox-安装指南.md)。
-
-装完打开一个新标签页，看到的就是归拢。
-
-要自己打包或者跑测试：
-
-```bash
-node tools/build-store.js          # 打成三个可分发的 zip（chrome / edge / firefox）
-node tests/smoke.js                # 冒烟测试 + 静态守卫，零依赖，跑完 0.2 秒
-node tests/mutations/run-all.js    # 变异测试：证明每条守卫坏掉时真的会变红（十几分钟）
-```
-
-> 「全新安装」和「图标有没有偷偷联网」另有两个脚本，要真机跑，见
-> [工程笔记](docs/工程笔记.md#另外三件必须真跑平时不跑)。
 
 ## 浏览器支持
 
@@ -173,11 +165,20 @@ Chrome 和 Edge 上图标读的是浏览器自己缓存的本地图标，Firefox
 
 Issue 和 PR 都欢迎。小改动直接提，大的先开个 issue 聊两句。
 
-改完跑一次冒烟测试，零依赖，0.2 秒：
+改完跑一遍冒烟测试，零依赖，0.2 秒；动过守卫的话再跑变异测试（十几分钟，证明每条守卫坏掉时真的会变红）：
 
 ```bash
 node tests/smoke.js
+node tests/mutations/run-all.js
 ```
+
+要出一份上架或分发用的 zip：
+
+```bash
+node tools/build-store.js          # chrome / edge / firefox 各一个
+```
+
+「全新安装」和「图标有没有偷偷联网」另有两个脚本，要真机跑，见 [工程笔记](docs/工程笔记.md#另外三件必须真跑平时不跑)。
 
 界面文案全在 `extension/strings.js` 一张表里，中英各一份。改文案只改那张表，别往 `app.js` 里写死字符串。引擎细节和各种技术取舍见[工程笔记](docs/工程笔记.md)。
 
