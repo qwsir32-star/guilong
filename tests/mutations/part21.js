@@ -14,12 +14,15 @@ const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 
-const REPO = '/Users/qwsir/WorkBuddy/拿来主义ai项目/guilong';
+/* ⚠️ 仓库根从 `__dirname` 推，**不写死绝对路径**。原来这里写的是
+   `/Users/qwsir/...`，本机跑着当然没事 —— 但别人 clone 下来跑不了，
+   CI 上更是直接挂。上一轮「去掉写死路径」漏了这份（它是那之后才加的）。 */
+const REPO = path.join(__dirname, '..', '..');
 const SMOKE_REL = path.join('tests', 'smoke.js');
 
 /* ---- 整仓副本 ----
    ⚠️ **整个仓库都复制**（只跳过 .git），别挑着复制。冒烟测试会读 LICENSE
-   （校验上游署名）、AGENTS.md、README.md、docs/、store/ —— 少一样基线就是红的，
+   （校验上游署名）、AGENTS.md、README.md、docs/ —— 少一样基线就是红的，
    然后你会以为是守卫在守，其实守的是「文件没复制全」。
    （踩过两次：第一次漏 LICENSE，第二次漏 AGENTS.md。） */
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'gl-p21-'));
