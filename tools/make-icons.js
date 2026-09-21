@@ -3,9 +3,9 @@
  * 母版是唯一真源 —— 改图标只改 icon.svg，然后重跑这个脚本。
  *
  * 跑法：
- *   NODE_PATH=/Users/qwsir/.workbuddy/binaries/node/workspace/node_modules \
- *   /Users/qwsir/.workbuddy/binaries/node/versions/24.14.0/bin/node tools/make-icons.js
- *   （需先 npm i @resvg/resvg-js 到上面那个 workspace）
+ *   npm i @resvg/resvg-js                 # 归拢本身零依赖，只有出图标才需要它
+ *   node tools/make-icons.js
+ *   （resvg 装在哪儿都行，用 NODE_PATH 指过去也可以）
  */
 const { Resvg } = require('@resvg/resvg-js');
 const fs = require('fs');

@@ -37,7 +37,8 @@ Release 和 Beta 版连 `xpinstall.signatures.required` 这个开关都不认了
 3. 弹窗里点**添加**（权限清单就是 `tabs / activeTab / storage / topSites / search` 这五项）
 4. 开一个新标签页 —— 就是仪表盘了
 
-> 现在还没上架，这条暂时走不通。上架要填的字段见 [store/上架文案.md](../store/上架文案.md)。
+> 现在三家商店都没提交（2026-09-21 起只做 GitHub 开源），这条暂时走不通。
+> 上架要填的字段见 [上架资料](上架资料.md)。
 
 ---
 
@@ -165,6 +166,6 @@ npx web-ext lint dist/firefox
 
 ## 相关
 
-- [store/上架文案.md](../store/上架文案.md) —— AMO 上架要填什么、三条硬要求
+- [上架资料](上架资料.md) —— AMO 上架要填什么、三条硬要求（提交已暂缓，材料留着）
 - [工程笔记](工程笔记.md) —— 目录结构、打包脚本、扩展 ID
 - [README](../README.md) —— 功能一览

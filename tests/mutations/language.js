@@ -33,7 +33,7 @@ const F = {
   app:     path.join(WORK, 'extension/app.js'),
   html:    path.join(WORK, 'extension/index.html'),
   readme:  path.join(WORK, 'README.md'),
-  store:   path.join(WORK, 'store/上架文案.md'),
+  store:   path.join(WORK, 'docs/上架资料.md'),
   agents:  path.join(WORK, 'AGENTS.md'),
 };
 const ORIG = Object.fromEntries(

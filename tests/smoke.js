@@ -2419,16 +2419,19 @@ function part17() {
       .filter(k => readmeDefault(k) !== codeDefault[k])
       .map(k => `${k}：README 写「${readmeDefault(k)}」，代码是「${codeDefault[k]}」`), []);
 
-  // 商店文案和 agent 手册里那两句「默认中文」也得跟着改 —— 商店那行是
-  // 用户真正读到的文字，它写错就是对外说错话。
-  const STORE_SRC = fs.readFileSync(path.join(ROOT, 'store/上架文案.md'), 'utf8');
+  // 上架资料和 agent 手册里那两句「默认中文」也得跟着改 —— 上架资料那行是
+  // 对外要说的话（虽然三家商店的提交已暂缓，Firefox 那条路仍在），写错就是对外说错话。
+  // ⚠️ 这份文件 2026-09-21 从 store/上架文案.md 挪到了 docs/上架资料.md，
+  //    改路径时**下面这两处 + language.js 的 F.store 要一起改**，否则
+  //    readFileSync 直接抛，整个 PART 17 都跑不完。
+  const STORE_SRC = fs.readFileSync(path.join(ROOT, 'docs/上架资料.md'), 'utf8');
   const AGENTS_SRC = fs.readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8');
-  check('商店文案里「中英双语」那行写的是跟随系统，不是默认中文',
+  check('上架资料里「中英双语」那行写的是跟随系统，不是默认中文',
     /【中英双语】[^\n]*跟随系统/.test(STORE_SRC), true);
   check('  AGENTS.md 也说跟随系统，不说默认中文',
     /默认跟随系统/.test(AGENTS_SRC), true);
   check('  没有任何一份文档还在说「默认中文」',
-    ['README.md', 'AGENTS.md', 'store/上架文案.md']
+    ['README.md', 'AGENTS.md', 'docs/上架资料.md']
       .filter(f => /默认中文/.test(fs.readFileSync(path.join(ROOT, f), 'utf8'))), []);
 }
 

@@ -1,11 +1,10 @@
 node_modules/
 
-# 商店上传用的包（tools/build-store.js 的产物，别提交）
+# 可分发的 zip（tools/build-store.js 的产物，别提交）
 dist/
 *.log
 *.db
 .DS_Store
-docs/superpowers/
 
 # Personal config (landing page patterns, etc.) — never push to GitHub
 extension/config.local.js

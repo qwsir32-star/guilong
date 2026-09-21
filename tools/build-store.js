@@ -1,5 +1,5 @@
 /**
- * build-store.js — 把 extension/ 打成三家商店能上传的包
+ * build-store.js — 把 extension/ 打成三个可分发（也能直接传商店）的 zip
  *
  * 跑法：node tools/build-store.js
  * 产物：dist/guilong-<版本>-chrome.zip / -edge.zip / -firefox.zip
