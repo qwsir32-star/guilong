@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SRC = path.join(__dirname, '..', '..');
-const WORK = '/tmp/gl-toolbar-mut-work';
+const WORK = '/tmp/gl-toolbar-mut-work-' + process.pid;
 const NODE = process.execPath;
 const BG = path.join(WORK, 'extension/background.js');
 const MF = path.join(WORK, 'extension/manifest.json');

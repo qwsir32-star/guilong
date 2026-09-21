@@ -7,7 +7,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const SRC = path.join(__dirname, '..', '..');
-const WORK = '/tmp/guilong-fonts-mut';
+const WORK = '/tmp/guilong-fonts-mut-' + process.pid;
 const NODE = process.execPath;
 
 function copyRepo() {

@@ -19,7 +19,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const SRC = path.join(__dirname, '..', '..');
-const WORK = '/tmp/gl-lang-mut-work';
+const WORK = '/tmp/gl-lang-mut-work-' + process.pid;
 
 function sh(cmd, cwd) {
   try { return { code: 0, out: execSync(cmd, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }; }

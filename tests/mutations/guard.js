@@ -16,7 +16,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const SRC = path.join(__dirname, '..', '..');
-const WORK = '/tmp/gl-guard-mut-work';
+const WORK = '/tmp/gl-guard-mut-work-' + process.pid;
 const NODE = process.execPath;
 // resvg **不在本仓库里**（归拢是零构建的，不装依赖），所以这里得自己找。
 // GL_RESVG 优先；否则按两个常见位置猜 —— 别把用户名写死（用 homedir() 拼），

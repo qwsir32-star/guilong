@@ -25,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SRC = path.join(__dirname, '..', '..');
-const WORK = '/tmp/gl-shortcut-mut-work';
+const WORK = '/tmp/gl-shortcut-mut-work-' + process.pid;
 const NODE = process.execPath;
 const MF  = path.join(WORK, 'extension/manifest.json');
 const APP = path.join(WORK, 'extension/app.js');
