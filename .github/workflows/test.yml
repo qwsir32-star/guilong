@@ -1,0 +1,69 @@
+name: 测试
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: 冒烟测试（578 条断言 + 静态守卫）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 零依赖，跑完 0.2 秒
+        run: node tests/smoke.js
+
+  discover:
+    name: 列出变异脚本
+    runs-on: ubuntu-latest
+    outputs:
+      scripts: ${{ steps.list.outputs.scripts }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: |
+          cd tests/mutations
+          ls *.js | grep -v '^run-all.js$' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0) | sub("\\.js$"; ""))' \
+            > /tmp/scripts.json
+          echo "scripts=$(cat /tmp/scripts.json)" >> "$GITHUB_OUTPUT"
+
+  mutations:
+    name: 变异 ${{ matrix.script }}
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      # 一份挂了不影响其他份：要一次看清到底哪几条守卫是装饰
+      fail-fast: false
+      matrix:
+        # ⚠️ 不在这里写死清单 —— 从目录扫。跟 run-all.js 一样，新脚本放进去
+        #    就自动挂上。写死了就会跟「加新脚本忘了登记」重演同一个坑。
+        script: ${{ fromJson(needs.discover.outputs.scripts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # 归拢本身零构建、不装依赖。只有 guard.js 要 resvg 去把图标渲染成真实像素，
+      # 所以只在这里装，装完不落进仓库（--no-save）。
+      - name: 装 resvg（只为 guard.js）
+        run: |
+          npm i --no-save --no-package-lock @resvg/resvg-js
+          # guard.js 找的是「仓库根 node_modules」，位置不对它就自己退出 1。
+          # 这里先自己验一遍，免得以后 npm 换了布局、报出来的是一句看不懂的错。
+          test -d node_modules/@resvg/resvg-js \
+            || { echo "resvg 不在 guard.js 要找的位置：node_modules/@resvg/resvg-js"; exit 1; }
+      - name: 证明这条守卫坏掉时真的会变红
+        run: node tests/mutations/${{ matrix.script }}.js
