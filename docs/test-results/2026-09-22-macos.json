@@ -1,0 +1,156 @@
+{
+  "date": "2026-09-22",
+  "sourceCommit": "8dbb039",
+  "results": [
+    {
+      "browser": "chrome",
+      "browserVersion": "Chrome/153.0.8010.53",
+      "extensionVersion": "1.5.4",
+      "platform": "darwin 24.6.0 arm64",
+      "checks": [
+        {
+          "name": "new tab override and first render",
+          "pass": true
+        },
+        {
+          "name": "group tabs and update real toolbar badge",
+          "pass": true
+        },
+        {
+          "name": "deduplicate via actual UI event",
+          "pass": true
+        },
+        {
+          "name": "save, archive and restore via UI",
+          "pass": true
+        },
+        {
+          "name": "focus tab in a different window",
+          "pass": true
+        },
+        {
+          "name": "settings modal, language, theme and pin storage",
+          "pass": true
+        },
+        {
+          "name": "reload retains saved items, theme, language and pins",
+          "pass": true
+        },
+        {
+          "name": "group close requires two clicks and preserves other group",
+          "pass": true
+        },
+        {
+          "name": "shortcut registered",
+          "pass": true
+        },
+        {
+          "name": "browser restart, reload test extension and data persistence",
+          "pass": true
+        }
+      ],
+      "shortcut": "⇧⌘K",
+      "errors": []
+    },
+    {
+      "browser": "edge",
+      "browserVersion": "Edg/153.0.4234.48",
+      "extensionVersion": "1.5.4",
+      "platform": "darwin 24.6.0 arm64",
+      "checks": [
+        {
+          "name": "new tab override and first render",
+          "pass": true
+        },
+        {
+          "name": "group tabs and update real toolbar badge",
+          "pass": true
+        },
+        {
+          "name": "deduplicate via actual UI event",
+          "pass": true
+        },
+        {
+          "name": "save, archive and restore via UI",
+          "pass": true
+        },
+        {
+          "name": "focus tab in a different window",
+          "pass": true
+        },
+        {
+          "name": "settings modal, language, theme and pin storage",
+          "pass": true
+        },
+        {
+          "name": "reload retains saved items, theme, language and pins",
+          "pass": true
+        },
+        {
+          "name": "group close requires two clicks and preserves other group",
+          "pass": true
+        },
+        {
+          "name": "shortcut registered",
+          "pass": true
+        },
+        {
+          "name": "browser restart, reload test extension and data persistence",
+          "pass": true
+        }
+      ],
+      "shortcut": "⇧⌘K",
+      "errors": []
+    },
+    {
+      "browser": "firefox",
+      "browserVersion": "156.0",
+      "extensionVersion": "1.5.4",
+      "platform": "darwin 24.6.0 arm64",
+      "checks": [
+        {
+          "name": "new tab override and first render",
+          "pass": true
+        },
+        {
+          "name": "group tabs and update real toolbar badge",
+          "pass": true
+        },
+        {
+          "name": "deduplicate via actual UI event",
+          "pass": true
+        },
+        {
+          "name": "save, archive and restore via UI",
+          "pass": true
+        },
+        {
+          "name": "focus tab in a different window",
+          "pass": true
+        },
+        {
+          "name": "settings modal, language, theme and pin storage",
+          "pass": true
+        },
+        {
+          "name": "reload retains saved items, theme, language and pins",
+          "pass": true
+        },
+        {
+          "name": "group close requires two clicks and preserves other group",
+          "pass": true
+        },
+        {
+          "name": "shortcut registered",
+          "pass": true
+        },
+        {
+          "name": "browser restart, reload test extension and data persistence",
+          "pass": true
+        }
+      ],
+      "shortcut": "Command+Shift+L",
+      "errors": []
+    }
+  ]
+}

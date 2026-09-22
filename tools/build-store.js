@@ -238,7 +238,7 @@ function assertChromium(m) {
   ok('后台是 service worker', !!(m.background && m.background.service_worker), true);
   check('保留了 key（扩展 ID 才不会变）', !!m.key);
   check('没有 Firefox 专有的字段', !m.browser_specific_settings);
-  ok('默认快捷键是 Ctrl+Shift+K', m.commands['open-dashboard'].suggested_key.default, 'Ctrl+Shift+K');
+  ok('默认快捷键是 Alt+Shift+K（避开 Edge 的复制标签页）', m.commands['open-dashboard'].suggested_key.default, 'Alt+Shift+K');
 }
 
 function assertFirefox(m) {
