@@ -1,5 +1,5 @@
 /**
- * build-store.js — 把 extension/ 打成三个可分发（也能直接传商店）的 zip
+ * build-store.js — 把 extension/ 打成三个浏览器的扩展目录和分发 zip
  *
  * 跑法：node tools/build-store.js
  * 产物：dist/guilong-<版本>-chrome.zip / -edge.zip / -firefox.zip
@@ -330,11 +330,11 @@ for (const t of targets) {
 
 console.log('');
 if (failed > 0) {
-  console.log(`${failed} 条断言没过 —— 包不能上传。`);
+  console.log(`${failed} 条断言没过 —— 包不能分发。`);
   process.exit(1);
 }
 for (const m of made) {
   const kb = (fs.statSync(m.zipPath).size / 1024).toFixed(0);
   console.log(`  ${m.target.padEnd(8)} ${path.relative(ROOT, m.zipPath)}  （${m.files} 个文件，${kb} KB）`);
 }
-console.log('\n上传前：Firefox 那份记得再跑一次 npx web-ext lint dist/firefox（本机装不上，沙箱拦了 npm）。');
+console.log('\nFirefox：在 about:debugging 临时加载 dist/firefox/manifest.json；重启浏览器后需重新加载。');

@@ -2,6 +2,10 @@
 
 你要帮用户装上 **归拢**。你的任务不只是把它跑起来 —— 还要让用户明白自己拿到了什么。
 
+当前分发方式：从 GitHub 仓库下载，由本地 agent 准备文件并引导用户加载。商店上架和签名不属于安装流程；`docs/上架资料.md` 是历史存档。
+
+安装前确认用户使用的浏览器；用户已说明时直接进入对应分支。
+
 ---
 
 ## Step 0 -- 先讲清楚这是什么
@@ -19,7 +23,7 @@
 > - **当地天气** 页头下面一行气温和天气，城市搜着选，默认上海，可关
 > - **不需要 API key** 没有服务器、不用账号
 >
-> 就是一个浏览器扩展，Chrome / Edge / Firefox 都能装，装起来大约 1 分钟。
+> 这是桌面浏览器扩展，支持 Chrome / Edge / Firefox。Firefox 当前使用临时加载，重启浏览器后需要重新加载。
 
 ---
 
@@ -34,11 +38,20 @@ cd guilong
 
 ## Step 2 -- 装扩展
 
-⚠️ **这一套是 Chrome / Edge 的。Firefox 强制签名，路径完全不同**：先
-`node tools/build-store.js`，然后让用户照 [Firefox 安装指南](docs/firefox-安装指南.md)
-用 `about:debugging` 临时加载 **`dist/firefox/manifest.json`**（**不是**
-`extension/manifest.json` —— 那份是 Chromium 的，background 在 Firefox 上根本不会启动，
-表现是「页面能开、但角标不动、快捷键无效」，安静地坏一半）。
+### Firefox
+
+使用 Firefox 时，先阅读 [Firefox 安装指南](docs/firefox-安装指南.md)，按指南准备文件：
+
+1. 检查 `node` 和 `zip` 命令是否可用，缺少时先协助准备打包环境。
+2. 在仓库目录执行 `node tools/build-store.js`，确认成功生成 `dist/firefox/manifest.json`。
+3. 提供该文件的绝对路径，引导用户到 `about:debugging#/runtime/this-firefox` 点击「载入临时扩展」并选中该文件。
+4. 提醒用户保留仓库目录；重启 Firefox 后重新加载同一文件即可，不必重新下载或打包。
+
+加载目标必须是 `dist/firefox/manifest.json`，不是源目录的 `extension/manifest.json`。源配置使用 `background.service_worker`，脚本会生成 Firefox 需要的 `background.scripts`。
+
+用户打开新标签页后，应能看到面板；再检查工具栏角标、图标点击和 `Ctrl+Shift+L` / `⌘⇧L` 快捷键。准备好文件不代表已经安装完成。完成此分支后进入 Step 3。
+
+### Chrome / Edge
 
 这一步必须用户自己动手。尽量让过程省事，别让他在文件选择框里翻目录。
 
@@ -57,7 +70,7 @@ echo "Extension folder: $(cd extension && pwd)"
 **再** 打开扩展管理页：
 
 ```bash
-open "chrome://extensions"
+open "chrome://extensions"   # Edge 使用 edge://extensions
 ```
 
 **然后** 一步一步带着用户做：
@@ -105,8 +118,7 @@ open "chrome://extensions"
 
 ## 关键事实
 
-- 归拢是一个**纯 Chrome 扩展**：没有服务器、加载和日常使用都不需要 Node.js / npm，也没有构建步骤。
-  （唯一的例外是**重出图标**：`node tools/make-icons.js` 需要 `@resvg/resvg-js`，平时用不到。）
+- 归拢是一个浏览器扩展，没有服务器。Chrome / Edge 直接加载源码，不需要 Node.js / npm；Firefox 首次准备和代码更新后需要 Node.js 与 zip 命令生成对应文件，日常使用无需运行它们。重出图标才需要 `@resvg/resvg-js`。
 - 存储用 `chrome.storage.local`，跨会话保留。
 - **数据本地，但有一个例外要说清楚**：标签页数据、钉住的站点、稍后再看、设置全在本地，不上传。
   唯一一次对外请求是**取天气**（可以在设置里关掉），它只把**你选的城市坐标**发给
@@ -180,7 +192,7 @@ open "chrome://extensions"
   一秒跑完；其中网络和图片是受控的假环境，不会真的联网）：
   它既验证内部纯函数的行为，也扫描源码守住「文案必须走 `strings.js`」「页头版式不变量」
   「旧品牌名不许回流」这几条约定。它不点界面，所以**不能替代手动加载扩展看一眼**。
-- 更新：`cd guilong && git pull`，然后在 `chrome://extensions` 里点扩展卡片上的刷新按钮。
+- 更新现有仓库：在仓库目录运行 `git pull`。Chrome / Edge 在各自扩展管理页点击刷新；Firefox 重新运行 `node tools/build-store.js` 后到 `about:debugging` 点击 Reload，重启过浏览器则重新临时加载。
   **改完记得关掉旧的新标签页重新开**——新标签页有缓存，只点刷新按钮不一定生效。
 - 本项目是 [Tab Out](https://github.com/zarazhangrui/tab-out) 的衍生版（MIT），原始署名与许可证原文见 `LICENSE`。
   **README 里的署名只在「致谢」和「许可证」两节出现**（用户裁定，删掉了顶部的衍生说明块）——

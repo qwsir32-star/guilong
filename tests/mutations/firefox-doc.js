@@ -60,7 +60,7 @@ const mutations = [
   {
     name: '指南删掉「先打包」这一步',
     where: 'GUIDE', anchor: 'node tools/build-store.js',
-    apply: s => s.replace('```bash\nnode tools/build-store.js\n```\n', ''),
+    apply: s => s.split('\n').filter(line => !line.includes('node tools/build-store.js')).join('\n'),
   },
   {
     name: '指南不再解释原因（整行删掉 service_worker）',

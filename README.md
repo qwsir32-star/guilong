@@ -54,7 +54,7 @@
 
 ### 让本地 agent 帮你安装
 
-归拢带了一份写给编码 agent 的安装手册（[AGENTS.md](./AGENTS.md)）。把这个链接发给 Claude Code、Codex、Cursor 这类本地 agent，并告诉它你使用的浏览器：
+归拢通过 GitHub 仓库分发，不需要去插件商店。仓库带了一份写给编码 agent 的安装手册（[AGENTS.md](./AGENTS.md)）。把这个链接发给 Claude Code、Codex、Cursor 这类本地 agent，并告诉它你使用的浏览器：
 
 ```
 https://github.com/qwsir32-star/guilong
@@ -63,7 +63,7 @@ https://github.com/qwsir32-star/guilong
 它会准备好对应的扩展文件，引导你在浏览器里完成安装，再带你过一遍界面。浏览器里的加载按钮和确认操作仍需要你亲自点击。
 
 - **Chrome / Edge**：准备好仓库后，直接加载 `extension/` 文件夹。
-- **Firefox**：agent 会先运行打包脚本，再引导你临时加载 `dist/firefox/manifest.json`。**重启 Firefox 后需要重新加载**；普通正式版若要长期安装，需要 Mozilla 签名的安装包，详见 [Firefox 安装指南](docs/firefox-安装指南.md)。
+- **Firefox**：agent 会先运行打包脚本，再引导你临时加载 `dist/firefox/manifest.json`。**重启 Firefox 后需要重新加载**，具体步骤见 [Firefox 安装指南](docs/firefox-安装指南.md)。
 
 ### 自己动手装
 
@@ -191,7 +191,7 @@ node tests/background.js
 node tests/mutations/run-all.js
 ```
 
-要出一份上架或分发用的 zip：
+要从源码生成各浏览器的扩展目录和分发 ZIP：
 
 ```bash
 node tools/build-store.js          # chrome / edge / firefox 各一个
