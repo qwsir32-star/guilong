@@ -240,7 +240,11 @@ async function stop() {
   });
   report.errors = errors;
   assert.equal(errors.length, 0, 'No page runtime errors');
-})().catch(async e => { report.failure = e.message; console.error(e); try { report.diagnostic = await evaluate('({url:location.href,title:document.title,body:document.body.innerText.slice(0,800),render:typeof renderDashboard})'); console.log(report.diagnostic); } catch(d) { console.log('Diagnostic:',d.message); } process.exitCode = 1; }).finally(async () => {
+})().catch(async e => { report.failure = e.message; console.error(e); try { report.diagnostic = await evaluate('({url:location.href,title:document.title,body:document.body.innerText.slice(0,800),render:typeof renderDashboard})'); console.log(report.diagnostic); } catch(d) { console.log('Diagnostic:',d.message); } if (process.env.GITHUB_ACTIONS) {
+    const diagnostic = JSON.stringify({ failure: report.failure, lastCheck: report.checks.at(-1), diagnostic: report.diagnostic }).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+    console.log(`::error title=Browser test failure::${diagnostic}`);
+  }
+  process.exitCode = 1; }).finally(async () => {
   await stop();
   fixtures?.close();
   fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
