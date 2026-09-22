@@ -52,15 +52,18 @@
 
 ## 安装
 
-### 把仓库链接甩给你的本地 agent
+### 让本地 agent 帮你安装
 
-归拢带了一份写给编码 agent 的安装手册（[AGENTS.md](./AGENTS.md)）。把这个链接发给 Claude Code、Codex、Cursor 这类 agent：
+归拢带了一份写给编码 agent 的安装手册（[AGENTS.md](./AGENTS.md)）。把这个链接发给 Claude Code、Codex、Cursor 这类本地 agent，并告诉它你使用的浏览器：
 
 ```
 https://github.com/qwsir32-star/guilong
 ```
 
-它会准备好仓库和扩展目录，再引导你在浏览器里完成加载、带你过一遍界面。浏览器的「加载已解压的扩展程序」需要你亲自点击。这条路是按 Chrome / Edge 写的，Firefox 走下面那条。
+它会准备好对应的扩展文件，引导你在浏览器里完成安装，再带你过一遍界面。浏览器里的加载按钮和确认操作仍需要你亲自点击。
+
+- **Chrome / Edge**：准备好仓库后，直接加载 `extension/` 文件夹。
+- **Firefox**：agent 会先运行打包脚本，再引导你临时加载 `dist/firefox/manifest.json`。**重启 Firefox 后需要重新加载**；普通正式版若要长期安装，需要 Mozilla 签名的安装包，详见 [Firefox 安装指南](docs/firefox-安装指南.md)。
 
 ### 自己动手装
 
@@ -71,11 +74,11 @@ git clone https://github.com/qwsir32-star/guilong.git
 ```
 
 - **Chrome / Edge**：打开 `chrome://extensions`（Edge 是 `edge://extensions`），右上角打开「开发者模式」，点「加载已解压的扩展程序」，选仓库里的 `extension/` 文件夹。
-- **Firefox**：Firefox 不给未签名的扩展长期安装，要先打包再临时加载，见 [Firefox 安装指南](docs/firefox-安装指南.md)。
+- **Firefox**：先运行 `node tools/build-store.js`（需要 Node.js），再到 `about:debugging` 临时加载 `dist/firefox/manifest.json`。重启 Firefox 后需要重新加载，具体步骤见 [Firefox 安装指南](docs/firefox-安装指南.md)。
 
 装完打开一个新标签页，看到的就是归拢。请保留扩展文件夹，浏览器会持续从这里读取文件。
 
-**更新已有安装**：Git 安装运行 `git pull`；ZIP 安装把新版解压到原来的目录。然后在扩展管理页点击归拢卡片的刷新按钮，关闭旧的新标签页再打开。不要先移除扩展，移除会清空本地保存的数据。
+**更新已有安装**：Git 安装运行 `git pull`；ZIP 安装把新版解压到原来的目录。Chrome / Edge 在扩展管理页点击归拢卡片的刷新按钮；Firefox 先重新运行打包脚本，再到 `about:debugging` 点击 Reload（若已重启浏览器，则重新临时加载）。最后关闭旧的新标签页再打开。不要先移除扩展，移除会清空本地保存的数据。
 
 ## 为什么做这个
 
