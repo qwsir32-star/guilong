@@ -1,7 +1,7 @@
 /**
  * background.js — Service Worker for Badge Updates
  *
- * Chrome's "always-on" background script for 归拢.
+ * Event-driven background script for 归拢.
  *
  * 两件事：
  *   1. 维护工具栏徽章上的标签页计数。
@@ -49,7 +49,25 @@ function bgEnv() {
  * 内部页的清单在 env.js 里 —— 三家浏览器的 scheme 不一样（Firefox 是
  * moz-extension://、about:newtab），写死在这里角标就会把内部页数进去。
  */
+let badgeUpdateRunning = false;
+let badgeUpdatePending = false;
+
+// 批量关页时合并事件；查询和写角标串行，旧结果不会覆盖新结果。
 async function updateBadge() {
+  badgeUpdatePending = true;
+  if (badgeUpdateRunning) return;
+  badgeUpdateRunning = true;
+  try {
+    while (badgeUpdatePending) {
+      badgeUpdatePending = false;
+      await refreshBadge();
+    }
+  } finally {
+    badgeUpdateRunning = false;
+  }
+}
+
+async function refreshBadge() {
   try {
     const tabs = await chrome.tabs.query({});
     const isInternal = bgEnv().isInternalUrl;
@@ -76,7 +94,7 @@ async function updateBadge() {
 
   } catch {
     // If something goes wrong, clear the badge rather than show stale data
-    chrome.action.setBadgeText({ text: '' });
+    try { await chrome.action.setBadgeText({ text: '' }); } catch { /* 浏览器正在退出 */ }
   }
 }
 
@@ -148,7 +166,13 @@ chrome.tabs.onRemoved.addListener(() => {
 });
 
 // Update badge when a tab's URL changes (e.g. navigating to/from chrome://)
-chrome.tabs.onUpdated.addListener(() => {
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  // 标题、图标、加载进度不改变计数，不必重新扫描全部标签页。
+  if (changeInfo.url !== undefined) updateBadge();
+});
+
+// 浏览器预渲染等操作可能直接替换标签页。
+chrome.tabs.onReplaced.addListener(() => {
   updateBadge();
 });
 

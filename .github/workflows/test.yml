@@ -22,8 +22,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: 零依赖，跑完 0.2 秒
-        run: node tests/smoke.js
+      - name: 冒烟与后台事件回归
+        run: |
+          node tests/smoke.js
+          node tests/background.js
+      - name: 验证三种浏览器的分发包
+        run: node tools/build-store.js
 
   discover:
     name: 列出变异脚本
@@ -59,6 +63,7 @@ jobs:
       # 归拢本身零构建、不装依赖。只有 guard.js 要 resvg 去把图标渲染成真实像素，
       # 所以只在这里装，装完不落进仓库（--no-save）。
       - name: 装 resvg（只为 guard.js）
+        if: matrix.script == 'guard'
         run: |
           npm i --no-save --no-package-lock @resvg/resvg-js
           # guard.js 找的是「仓库根 node_modules」，位置不对它就自己退出 1。

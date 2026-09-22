@@ -14,6 +14,11 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/qwsir32-star/guilong" alt="License"></a>
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
+  <a href="https://github.com/qwsir32-star/guilong/actions/workflows/test.yml"><img src="https://github.com/qwsir32-star/guilong/actions/workflows/test.yml/badge.svg" alt="自动化测试"></a>
+</p>
+
+<p align="center">
+  <a href="#安装">开始安装</a> · <a href="#功能">查看功能</a> · <a href="PRIVACY.md">隐私说明</a> · <a href="https://github.com/qwsir32-star/guilong/issues/new/choose">反馈问题</a>
 </p>
 
 ---
@@ -55,9 +60,11 @@
 https://github.com/qwsir32-star/guilong
 ```
 
-它会克隆仓库、把 `extension/` 加载成扩展，再带你过一遍界面。全程大约一分钟，不用你在文件选择框里翻目录。这条路是按 Chrome / Edge 写的，Firefox 走下面那条。
+它会准备好仓库和扩展目录，再引导你在浏览器里完成加载、带你过一遍界面。浏览器的「加载已解压的扩展程序」需要你亲自点击。这条路是按 Chrome / Edge 写的，Firefox 走下面那条。
 
 ### 自己动手装
+
+Chrome / Edge 日常使用不需要 Node.js、npm 或构建。你可以点页面顶部 **Code → Download ZIP**，解压后按下面步骤加载；也可以使用 Git：
 
 ```bash
 git clone https://github.com/qwsir32-star/guilong.git
@@ -66,7 +73,9 @@ git clone https://github.com/qwsir32-star/guilong.git
 - **Chrome / Edge**：打开 `chrome://extensions`（Edge 是 `edge://extensions`），右上角打开「开发者模式」，点「加载已解压的扩展程序」，选仓库里的 `extension/` 文件夹。
 - **Firefox**：Firefox 不给未签名的扩展长期安装，要先打包再临时加载，见 [Firefox 安装指南](docs/firefox-安装指南.md)。
 
-装完打开一个新标签页，看到的就是归拢。
+装完打开一个新标签页，看到的就是归拢。请保留扩展文件夹，浏览器会持续从这里读取文件。
+
+**更新已有安装**：Git 安装运行 `git pull`；ZIP 安装把新版解压到原来的目录。然后在扩展管理页点击归拢卡片的刷新按钮，关闭旧的新标签页再打开。不要先移除扩展，移除会清空本地保存的数据。
 
 ## 为什么做这个
 
@@ -125,6 +134,12 @@ git clone https://github.com/qwsir32-star/guilong.git
 ## 常见问题
 
 <details>
+<summary>标签页和保存的内容会上传吗？</summary>
+
+不会。标签页、稍后再看、常用站点和设置保存在本机。天气开启时会向 Open-Meteo 请求所选城市的天气，不携带浏览数据；城市搜索在本地完成。天气可以在设置里关闭。详见[隐私声明](PRIVACY.md)。
+</details>
+
+<details>
 <summary>关掉某个开关，我钉住的站点会不会丢？</summary>
 
 不会。开关只管显示，一条数据都不删。关掉再打开，原样还在。
@@ -169,6 +184,7 @@ Issue 和 PR 都欢迎。小改动直接提，大的先开个 issue 聊两句。
 
 ```bash
 node tests/smoke.js
+node tests/background.js
 node tests/mutations/run-all.js
 ```
 

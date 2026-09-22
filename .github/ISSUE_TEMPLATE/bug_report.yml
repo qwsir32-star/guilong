@@ -1,0 +1,35 @@
+name: 问题反馈
+description: 报告安装、标签页管理或界面问题
+title: "[问题] "
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: 使用环境
+      description: 浏览器及版本、操作系统、归拢版本（扩展管理页可见）
+      placeholder: Chrome / macOS / 归拢 1.5.3
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: 安装方式
+      options:
+        - Git 克隆后加载
+        - 下载 ZIP 后加载
+        - Firefox 临时加载
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 做了什么、期望发生什么、实际发生什么？
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 截图或错误信息（可选）
+      description: 请先遮住私人标签页标题、网址和其他个人信息。
