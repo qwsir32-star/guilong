@@ -26,6 +26,7 @@ jobs:
         run: |
           node tests/smoke.js
           node tests/background.js
+          node tests/config-loader.js
       - name: 验证三种浏览器的分发包
         run: node tools/build-store.js
 

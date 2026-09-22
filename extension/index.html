@@ -335,17 +335,12 @@
   <span id="toastText" data-page-node-id="cps2afqB4JGI84hSeWae9S"></span>
 </div>
 
-<!-- Personal config (gitignored) — defines LOCAL_LANDING_PAGE_PATTERNS etc. -->
-<!-- If the file doesn't exist, that's fine — app.js uses sensible defaults,
-     and a missing file only logs a harmless 404 in the console.
-     NOTE: do NOT add onerror="..." here — MV3's default CSP (script-src 'self')
-     blocks inline event handlers, so it would never run and would log
-     "Refused to execute inline event handler" on every new tab. -->
 <!-- 浏览器环境判定（Chrome / Edge / Firefox 的差异全在这一个文件里）。
      ⚠️ 必须在 app.js 之前：app.js 顶层就要用它算 SHORTCUTS_URL。 -->
 <script src="env.js"></script>
 
-<script src="config.local.js"></script>
+<!-- 可选的个人规则：存在时加载，完成后再首次渲染。 -->
+<script src="config-loader.js"></script>
 
 <!-- 文案表 —— 必须在 app.js 之前。所有给人看的字都在这里，
      静态文案靠 data-i18n 在启动时填充（见 applyStaticStrings）。 -->

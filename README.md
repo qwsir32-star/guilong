@@ -188,6 +188,7 @@ Issue 和 PR 都欢迎。小改动直接提，大的先开个 issue 聊两句。
 ```bash
 node tests/smoke.js
 node tests/background.js
+node tests/config-loader.js
 node tests/mutations/run-all.js
 ```
 
@@ -196,6 +197,8 @@ node tests/mutations/run-all.js
 ```bash
 node tools/build-store.js          # chrome / edge / firefox 各一个
 ```
+
+跨浏览器实测方法与覆盖范围见[浏览器测试](docs/浏览器测试.md)。
 
 「全新安装」和「图标有没有偷偷联网」另有两个脚本，要真机跑，见 [工程笔记](docs/工程笔记.md#另外三件必须真跑平时不跑)。
 

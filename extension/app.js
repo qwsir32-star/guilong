@@ -2525,24 +2525,30 @@ async function getUiPrefs() {
   return { ...UI_PREFS_DEFAULTS, ...prefs };
 }
 
+// Read/modify/write must be serial: rapidly changing two settings must keep both.
+let uiPrefWrite = Promise.resolve();
 async function setUiPref(key, value) {
-  if (!(key in UI_PREFS_DEFAULTS)) return;   // 只认自己声明过的开关
-  const prefs = await getUiPrefs();
+  const write = uiPrefWrite.then(async () => {
+    if (!(key in UI_PREFS_DEFAULTS)) return;   // 只认自己声明过的开关
+    const prefs = await getUiPrefs();
 
-  // ⚠️ 按默认值的类型定型，不能一律 !!value。下拉框存的是字符串，
-  // 一转布尔主题就变成 true，读回来既不认识也回不到默认 —— 页面会一直
-  // 停在纸感上，而存储里写着 true，看代码看不出毛病。
-  prefs[key] = typeof UI_PREFS_DEFAULTS[key] === 'boolean' ? !!value : String(value);
+    // ⚠️ 按默认值的类型定型，不能一律 !!value。下拉框存的是字符串，
+    // 一转布尔主题就变成 true，读回来既不认识也回不到默认 —— 页面会一直
+    // 停在纸感上，而存储里写着 true，看代码看不出毛病。
+    prefs[key] = typeof UI_PREFS_DEFAULTS[key] === 'boolean' ? !!value : String(value);
 
-  if (key === 'theme') {
-    prefs.theme = normalizeTheme(prefs.theme);
-    mirrorTheme(prefs.theme);   // 同步镜像，下次开新标签页才不会闪一下
-  }
+    if (key === 'theme') {
+      prefs.theme = normalizeTheme(prefs.theme);
+      mirrorTheme(prefs.theme);   // 同步镜像，下次开新标签页才不会闪一下
+    }
 
-  // 语言同理：不认识的值不许进存储，否则设置面板那个下拉框会显示成空白
-  if (key === 'language') prefs.language = normalizeLanguage(prefs.language);
+    // 语言同理：不认识的值不许进存储，否则设置面板那个下拉框会显示成空白
+    if (key === 'language') prefs.language = normalizeLanguage(prefs.language);
 
-  await chrome.storage.local.set({ [UI_PREFS_KEY]: prefs });
+    await chrome.storage.local.set({ [UI_PREFS_KEY]: prefs });
+  });
+  uiPrefWrite = write.catch(() => {});
+  return write;
 }
 
 /** applyUiPrefs() — 把开关状态落到 DOM 上（显示/隐藏 + 同步开关自己的位置） */
@@ -3731,6 +3737,7 @@ document.addEventListener('click', async (e) => {
     if (!group) return;
 
     const urls      = group.tabs.map(t => t.url);
+    if (!confirmOrArm(actionEl, `${ICONS.close}${T('toast.confirmCloseAll', { n: urls.length })}`)) return;
     // Landing pages and custom groups (whose domain key isn't a real hostname)
     // must use exact URL matching to avoid closing unrelated tabs.
     // merged=true 是子域归并出来的组：组名是主域，但组内的 tabs 只覆盖
@@ -4051,4 +4058,8 @@ document.addEventListener('input', async (e) => {
 /* ----------------------------------------------------------------
    INITIALIZE
    ---------------------------------------------------------------- */
-renderDashboard();
+if (globalThis.GL_CONFIG_READY) {
+  globalThis.GL_CONFIG_READY.then(() => renderDashboard());
+} else {
+  renderDashboard();
+}

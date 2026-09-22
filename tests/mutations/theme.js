@@ -37,8 +37,8 @@ const MUTATIONS = [
     to:   '  prefs[key] = !!value;' },
 
   { n: '主题不认识的值也照存（脏值留在存储里）', f: 'extension/app.js',
-    from: "  if (key === 'theme') {\n    prefs.theme = normalizeTheme(prefs.theme);",
-    to:   "  if (key === 'theme' && false) {\n    prefs.theme = normalizeTheme(prefs.theme);" },
+    from: "prefs.theme = normalizeTheme(prefs.theme);",
+    to:   "prefs.theme = prefs.theme;" },
 
   /* ---- 跟随系统的解析 ---- */
   { n: '跟随系统的深浅反了', f: 'extension/app.js',

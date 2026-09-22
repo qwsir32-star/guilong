@@ -29,14 +29,9 @@ const DIST = path.join(ROOT, 'dist');
    - .DS_Store 是 macOS 的垃圾，混进包里 AMO 会报「包里有奇怪的东西」 */
 const EXCLUDE = new Set(['config.local.js', '.DS_Store', 'Icon\r']);
 
-/* index.html 里有一条**无条件**的 <script src="config.local.js">，所以包里必须有
-   一个同名文件。少了它不算「干净」—— 那是**每一个新装的用户**打开第一个新标签页
-   就在控制台看到一条 ERR_FILE_NOT_FOUND（CWS / AMO 审核都会开 DevTools）。
-   （2026-09-19 用全新 profile 跑 Chrome 时发现的，六种组合里六次全中。）
-
-   用户装的是商店包，改不到包里的文件，所以这份**故意留空**。空文件是安全的：
-   app.js 用 `typeof LOCAL_XXX !== 'undefined'` 取配置，取不到就走内置规则。
-   真正带规则的那份只存在于源码目录（已 gitignore），永远不会被打进来。 */
+/* 分发包保留空的个人配置占位文件，避免旧目录残留自定义规则。
+   源码安装由 config-loader.js 检测可选文件；不存在时直接使用默认规则。
+   个人配置永远不进入分发包。 */
 const LOCAL_CONFIG_STUB = `/*
  * config.local.js —— 故意留空
  *
@@ -44,8 +39,7 @@ const LOCAL_CONFIG_STUB = `/*
  * 合成一张卡）。在**源码目录**里建这个文件、改完重新加载扩展就生效；
  * 它已在 .gitignore 里，不会被提交。字段见 docs/工程笔记.md。
  *
- * 商店包里这一份是空的：index.html 无条件引用了它，漏掉的话每个新装的用户
- * 打开第一个新标签页都会在控制台看到一条 ERR_FILE_NOT_FOUND。
+ * 分发包里的这份文件是空的，不包含开发者的个人规则。
  * 空文件是安全的 —— app.js 取不到 LOCAL_XXX 就走内置规则。
  */
 `;
@@ -231,12 +225,9 @@ function assertCommon(target, m, dir) {
   // 垃圾文件
   check('包里没有 .DS_Store', !fs.existsSync(path.join(dir, '.DS_Store')));
 
-  /* config.local.js：包里那份必须**在**，而且必须是**空壳**。两条是一对 ——
-     缺任何一条都对应一个具体的坏结果：
-       · 不在   → 每个新装的用户控制台一条 ERR_FILE_NOT_FOUND（首屏就报）
-       · 不空壳 → 把开发者自己那份个人规则发出去了（里面可能是私人站点） */
+  // 分发包中的配置必须是已知空壳，不能夹带个人规则。
   const localCfg = path.join(dir, 'config.local.js');
-  check('包里有 config.local.js（index.html 无条件引用它，缺了首装就 404）',
+  check('包里有干净的 config.local.js 占位文件',
     fs.existsSync(localCfg));
   check('  而且是个空壳，没夹带个人规则',
     fs.existsSync(localCfg) &&

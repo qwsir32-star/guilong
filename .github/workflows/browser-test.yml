@@ -1,0 +1,70 @@
+name: 真实浏览器测试
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'extension/**'
+      - 'tools/check-browser.js'
+      - 'tools/build-store.js'
+      - '.github/workflows/browser-test.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tools/build-store.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firefox-extension
+          path: dist/firefox/
+
+  windows:
+    name: Windows / ${{ matrix.browser }}
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, edge, firefox]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: firefox-extension
+          path: dist/firefox/
+      - name: Run isolated browser tests
+        shell: pwsh
+        env:
+          GL_BROWSER: ${{ matrix.browser }}
+        run: |
+          $bins = @{
+            chrome = "$env:ProgramFiles\Google\Chrome\Application\chrome.exe"
+            edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+            firefox = "$env:ProgramFiles\Mozilla Firefox\firefox.exe"
+          }
+          $env:GL_BROWSER_BIN = $bins[$env:GL_BROWSER]
+          if (!(Test-Path $env:GL_BROWSER_BIN)) { throw "Browser missing: $env:GL_BROWSER_BIN" }
+          node tools/check-browser.js
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-${{ matrix.browser }}-report
+          path: dist/browser-check/

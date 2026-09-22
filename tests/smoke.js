@@ -821,6 +821,10 @@ async function part7() {
     { showQuickSites: false, showSearchBox: false, showWeather: true,
       theme: 'paper', language: 'system' });
 
+  await Promise.all([T.setUiPref('language', 'en'), T.setUiPref('theme', 'dark')]);
+  const rapidPrefs = await T.getUiPrefs();
+  check('快速切换两项设置都保留', [rapidPrefs.language, rapidPrefs.theme], ['en', 'dark']);
+
   await T.setUiPref('showQuickSites', false);
   check('关掉站点条后读回来是关的', (await T.getUiPrefs()).showQuickSites, false);
 
