@@ -1,0 +1,33 @@
+{
+  "sourceCommit": "c6fbb5e",
+  "runUrl": "https://github.com/qwsir32-star/guilong/actions/runs/35698577476",
+  "results": [
+    {
+      "browser": "chrome",
+      "version": "Chrome/152.0.7977.83",
+      "platform": "win32 10.0.26100 x64",
+      "extensionVersion": "1.5.5",
+      "passed": 10,
+      "shortcut": "Alt+Shift+K",
+      "jobUrl": "https://github.com/qwsir32-star/guilong/actions/runs/35698577476/job/106650968018"
+    },
+    {
+      "browser": "edge",
+      "version": "Edg/152.0.4191.66",
+      "platform": "win32 10.0.26100 x64",
+      "extensionVersion": "1.5.5",
+      "passed": 10,
+      "shortcut": "Alt+Shift+K",
+      "jobUrl": "https://github.com/qwsir32-star/guilong/actions/runs/35698577476/job/106650968071"
+    },
+    {
+      "browser": "firefox",
+      "version": "155.0.1",
+      "platform": "win32 10.0.26100 x64",
+      "extensionVersion": "1.5.5",
+      "passed": 10,
+      "shortcut": "Ctrl+Shift+L",
+      "jobUrl": "https://github.com/qwsir32-star/guilong/actions/runs/35698577476/job/106650968062"
+    }
+  ]
+}

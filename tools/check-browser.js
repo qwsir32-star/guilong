@@ -23,7 +23,12 @@ let proc, ws, api, context, session, dashboard, port, fixtures;
 const errors = [];
 async function connect(url) {
   const socket = new WebSocket(url);
-  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { socket.close(); reject(new Error('WebSocket connection timeout')); }, 3000);
+    socket.onopen = () => { clearTimeout(timer); resolve(); };
+    socket.onerror = () => { clearTimeout(timer); reject(new Error('WebSocket connection failed')); };
+    socket.onclose = () => { clearTimeout(timer); reject(new Error('WebSocket closed before connection')); };
+  });
   let sequence = 0;
   const pending = new Map();
   socket.onmessage = event => {
@@ -87,10 +92,11 @@ async function start(install) {
   proc.on('error', e => { launchError = e; });
   for (let i = 0; i < 100; i++) {
     if (launchError) throw launchError;
+    if (proc.exitCode !== null || proc.signalCode !== null) throw Error('Browser exited during startup; see browser.log');
     try {
       if (kind === 'firefox') api = await connect(`ws://127.0.0.1:${port}/session`);
       else {
-        const ver = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
+        const ver = await (await fetch(`http://127.0.0.1:${port}/json/version`, {signal:AbortSignal.timeout(3000)})).json();
         report.browserVersion = ver.Browser;
         api = await connect(ver.webSocketDebuggerUrl);
       }

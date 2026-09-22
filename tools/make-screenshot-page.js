@@ -341,7 +341,7 @@ async function buildPage(DEMO_TABS, cfg) {
   const cmdName = Object.keys(manifest.commands || {})[0];
   const macKey  = manifest.commands[cmdName].suggested_key.mac;
 
-  /* --- 按 UA 里的平台给「默认快捷键」：mac 用 Command+Shift+K，其余 Ctrl+... --- */
+  /* --- 按 UA 里的平台给「默认快捷键」：按 manifest 中的 mac / default 字段 --- */
   const stubPlatforms = `
     const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
     const shortcut = mac ? ${JSON.stringify(macKey)} : ${JSON.stringify(manifest.commands[cmdName].suggested_key.default)};`;
