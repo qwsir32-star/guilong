@@ -193,6 +193,9 @@ async function stop() {
     assert.deepEqual(await evaluate(order), ['127.0.0.1','localhost']);
   });
   await check('unequal height cards swap visual columns without replaying entrance animations', async () => {
+    // ResizeObserver is suspended in background tabs in Firefox. Exercise a visible page.
+    if (kind === 'firefox') await api('browsingContext.activate', {context});
+    else await api('Page.bringToFront', {}, session);
     const result = await evaluate(`(async () => {
       await chrome.storage.local.set({domainCardOrder:{}});
       const container = document.getElementById('openTabsMissions');
@@ -224,11 +227,18 @@ async function stop() {
       container.innerHTML = domainGroups.map(renderDomainCard).join('');
       layoutDomainCards(persisted);
       const restored = snapshot();
+      const waitForColumns = async count => {
+        for (let i=0;i<60;i++) {
+          if (snapshot().length===count) return;
+          await new Promise(r=>setTimeout(r,50));
+        }
+        throw Error('Resize did not reach '+count+' columns; width='+container.clientWidth);
+      };
       container.style.width='280px';
-      await new Promise(r=>setTimeout(r,100));
+      await waitForColumns(1);
       const narrow = snapshot();
       container.style.width='900px';
-      await new Promise(r=>setTimeout(r,100));
+      await waitForColumns(3);
       const widened = snapshot();
       return {first,target,after,animations,topped,bottomed,expected,restored,narrow,widened};
     })()`);
