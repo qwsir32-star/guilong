@@ -193,9 +193,10 @@ async function stop() {
     assert.deepEqual(await evaluate(order), ['127.0.0.1','localhost']);
   });
   await check('unequal height cards swap visual columns without replaying entrance animations', async () => {
-    // ResizeObserver is suspended in background tabs in Firefox. Exercise a visible page.
-    if (kind === 'firefox') await api('browsingContext.activate', {context});
+    // Exercise a visible page; Firefox BiDi cannot activate privileged extension contexts.
+    if (kind === 'firefox') await evaluate('(async()=>{const tab=await chrome.tabs.getCurrent();await chrome.tabs.update(tab.id,{active:true});return true;})()');
     else await api('Page.bringToFront', {}, session);
+    await waitFor('document.visibilityState === "visible"');
     const result = await evaluate(`(async () => {
       await chrome.storage.local.set({domainCardOrder:{}});
       const container = document.getElementById('openTabsMissions');
