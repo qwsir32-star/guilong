@@ -92,6 +92,8 @@ const STRINGS = {
   zh: {
     'order.drag': '拖动到另一张卡片上交换位置',
     'order.top': '置顶',
+    'order.topHint': '移到本列顶部',
+    'order.bottomHint': '移到本列底部',
     'order.bottom': '置底',
     'order.reset': '按标签数排序',
     'order.failed': '排序保存失败，请重试',
@@ -322,6 +324,8 @@ const STRINGS = {
   en: {
     'order.drag': 'Drag onto another card to swap positions',
     'order.top': 'Top',
+    'order.topHint': 'Move to the top of this column',
+    'order.bottomHint': 'Move to the bottom of this column',
     'order.bottom': 'Bottom',
     'order.reset': 'Sort by tab count',
     'order.failed': 'Could not save the order. Please try again.',

@@ -173,7 +173,7 @@ async function stop() {
     assert.equal(await evaluate('domainGroups.some(g=>g.tabs.some(t=>t.url.includes("127.0.0.1")))'), true);
     assert.equal(await evaluate('domainGroups.some(g=>g.tabs.some(t=>t.url.includes("localhost")))'), true);
   });
-  await check('card count sorting, drag swap, top/bottom and persistence', async () => {
+  await check('card count sorting, drag swap and persistence', async () => {
     const order = 'Array.from(document.querySelectorAll("#openTabsMissions .domain-card"), c=>c.dataset.groupKey)';
     assert.deepEqual(await evaluate(order), ['127.0.0.1', 'localhost']);
     await evaluate(`(() => {
@@ -185,16 +185,69 @@ async function stop() {
       return true;
     })()`);
     await waitFor(`(${order})[0] === 'localhost'`);
-    await click('[data-group-key="localhost"] [data-action="card-bottom"]');
-    await waitFor(`(${order})[1] === 'localhost'`);
-    await click('[data-group-key="localhost"] [data-action="card-top"]');
-    await waitFor(`(${order})[0] === 'localhost'`);
     await navigate(dashboard);
     assert.deepEqual(await evaluate(order), ['localhost','127.0.0.1']);
     await click('[data-action="card-reset"]');
     await waitFor(`(${order})[0] === '127.0.0.1'`);
     await navigate(dashboard);
     assert.deepEqual(await evaluate(order), ['127.0.0.1','localhost']);
+  });
+  await check('unequal height cards swap visual columns without replaying entrance animations', async () => {
+    const result = await evaluate(`(async () => {
+      await chrome.storage.local.set({domainCardOrder:{}});
+      const container = document.getElementById('openTabsMissions');
+      container.style.width = '900px';
+      const sample = domainGroups[0].tabs[0];
+      domainGroups = Array.from({length:18}, (_,i)=>({domain:'layout-'+i, tabs:Array.from({length:i===0?8:1},(_,j)=>({...sample,url:'https://layout-'+i+'.test/page-'+j,title:'Page '+j}))}));
+      container.innerHTML = domainGroups.map(renderDomainCard).join('');
+      if (typeof layoutDomainCards === 'function') layoutDomainCards({});
+      await new Promise(r=>setTimeout(r,1000));
+      const rect = c => {const r=c.getBoundingClientRect(); return {key:c.dataset.groupKey,x:r.x,y:r.y};};
+      const before = Array.from(container.querySelectorAll('.domain-card'),rect);
+      const first = before[0];
+      const target = before.find(c=>c.x>first.x+100 && Math.abs(c.y-first.y)<5);
+      if (!target) throw Error('Fixture needs two cards at the tops of different columns: '+JSON.stringify(before));
+      let animations=0;
+      const listener = e=>{if(e.animationName==='fadeUp') animations++;};
+      container.addEventListener('animationstart',listener);
+      await updateCardOrder('swap',first.key,target.key);
+      await new Promise(r=>setTimeout(r,800));
+      const after = Array.from(container.querySelectorAll('.domain-card'),rect);
+      container.removeEventListener('animationstart',listener);
+      await updateCardOrder('top',first.key);
+      const topped = rect(container.querySelector('[data-group-key="'+first.key+'"]'));
+      await updateCardOrder('bottom',first.key);
+      const bottomed = rect(container.querySelector('[data-group-key="'+first.key+'"]'));
+      const snapshot = () => Array.from(container.querySelectorAll('.domain-card-column'), col => Array.from(col.children,c=>c.dataset.groupKey));
+      const expected = snapshot();
+      const persisted = (await chrome.storage.local.get('domainCardOrder')).domainCardOrder;
+      container.innerHTML = domainGroups.map(renderDomainCard).join('');
+      layoutDomainCards(persisted);
+      const restored = snapshot();
+      container.style.width='280px';
+      await new Promise(r=>setTimeout(r,100));
+      const narrow = snapshot();
+      container.style.width='900px';
+      await new Promise(r=>setTimeout(r,100));
+      const widened = snapshot();
+      return {first,target,after,animations,topped,bottomed,expected,restored,narrow,widened};
+    })()`);
+    const moved = result.after.find(c=>c.key===result.first.key);
+    assert.ok(Math.abs(moved.x-result.target.x)<5 && Math.abs(moved.y-result.target.y)<5, JSON.stringify(result));
+    assert.equal(result.animations,0,'Reordering must not replay fadeUp');
+    assert.deepEqual(result.restored,result.expected,'Reopening preserves columns');
+    assert.equal(result.narrow.length,1);
+    assert.equal(result.narrow[0].length,18);
+    assert.deepEqual(result.widened,result.expected,'Resizing back preserves columns');
+    assert.ok(Math.abs(result.topped.x-result.target.x)<5,'Top must stay in its column: '+JSON.stringify(result));
+    assert.ok(Math.abs(result.bottomed.x-result.target.x)<5,'Bottom must stay in its column: '+JSON.stringify(result));
+    assert.ok(Math.abs(result.topped.y-result.target.y)<5,'Top must be at the top of its own column');
+    assert.equal(result.expected.find(col=>col.includes(result.first.key)).at(-1),result.first.key);
+    if (kind !== 'firefox') {
+      const shot = await api('Page.captureScreenshot', {format:'png',captureBeyondViewport:true}, session);
+      fs.writeFileSync(path.join(out,'card-columns.png'),Buffer.from(shot.data,'base64'));
+    }
+    await evaluate(`(async()=>{document.getElementById('openTabsMissions').style.width='';await chrome.storage.local.set({domainCardOrder:{}});await renderDashboard();return true;})()`);
   });
   await check('deduplicate via actual UI event', async () => {
     await click('[data-action="dedup-keep-one"]');

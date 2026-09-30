@@ -1604,42 +1604,104 @@ function sortDomainCards(groups, value) {
     return (Number.isNaN(diff) ? 0 : diff) || b.tabs.length - a.tabs.length || a.domain.localeCompare(b.domain);
   });
 }
-function changeCardOrder(groups, value, action, source, target) {
-  if (action === 'reset') return normalizeCardOrder(null);
-  const state = normalizeCardOrder(value);
-  const ids = sortDomainCards(groups, state).map(g => g.domain);
-  if (!ids.includes(source)) return state;
-  if (action === 'swap') {
-    if (!ids.includes(target) || source === target) return state;
-    const a = ids.indexOf(source), b = ids.indexOf(target);
-    [ids[a], ids[b]] = [ids[b], ids[a]];
-    const exchange = key => key === source ? target : key === target ? source : key;
-    state.top = state.top.map(exchange);
-    state.bottom = state.bottom.map(exchange);
-  } else if (action === 'top' || action === 'bottom') {
-    state.top = state.top.filter(x => x !== source);
-    state.bottom = state.bottom.filter(x => x !== source);
-    if (action === 'top') state.top.unshift(source);
-    else state.bottom.push(source);
-  } else return state;
-  state.order = [...ids, ...state.order.filter(x => !ids.includes(x))];
-  return state;
-}
 // END CARD ORDER MODEL
 
+// Column membership is explicit: CSS multi-column balancing cannot preserve a swap.
+// CARD COLUMN MODEL
+function buildCardColumns(groups, saved, count) {
+  const ids = new Set(groups.map(g => g.domain));
+  const old = saved?.layouts?.[count];
+  const seen = new Set();
+  const columns = Array.from({length:count}, (_, i) =>
+    (Array.isArray(old?.columns?.[i]) ? old.columns[i] : []).filter(key => {
+      if (!ids.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }));
+  const bottom = Array.isArray(old?.bottom) ? old.bottom.filter(key => ids.has(key)) : [];
+  for (const group of groups) {
+    if (seen.has(group.domain)) continue;
+    const column = columns.reduce((best, c) => c.length < best.length ? c : best, columns[0]);
+    const end = column.findIndex(key => bottom.includes(key));
+    column.splice(end < 0 ? column.length : end, 0, group.domain);
+  }
+  return { columns, bottom };
+}
+function changeCardColumns(layout, action, source, target) {
+  const columns = layout.columns.map(column => [...column]);
+  let bottom = [...layout.bottom];
+  const from = columns.find(column => column.includes(source));
+  if (!from) return {columns, bottom};
+  const index = from.indexOf(source);
+  if (action === 'swap') {
+    const to = columns.find(column => column.includes(target));
+    if (!to || source === target) return {columns, bottom};
+    const targetIndex = to.indexOf(target);
+    from[index] = target;
+    to[targetIndex] = source;
+    bottom = bottom.map(key => key === source ? target : key === target ? source : key);
+  } else if (action === 'top' || action === 'bottom') {
+    from.splice(index, 1);
+    if (action === 'top') from.unshift(source);
+    else from.push(source);
+    bottom = bottom.filter(key => key !== source);
+    if (action === 'bottom') bottom.push(source);
+  }
+  return {columns, bottom};
+}
+// END CARD COLUMN MODEL
+let displayedCardOrder = {};
+let cardColumnCount = 0;
+let cardLayoutObserver;
+function getCardColumnCount() {
+  const width = document.getElementById('openTabsMissions').clientWidth;
+  return Math.max(1, Math.floor((width + 12) / 292));
+}
+function layoutDomainCards(saved = displayedCardOrder) {
+  const container = document.getElementById('openTabsMissions');
+  if (!container) return;
+  displayedCardOrder = saved;
+  cardColumnCount = getCardColumnCount();
+  const layout = buildCardColumns(domainGroups, saved, cardColumnCount);
+  const cards = new Map([...container.querySelectorAll('.domain-card')].map(card => [card.dataset.groupKey, card]));
+  const wrappers = [...container.querySelectorAll(':scope > .domain-card-column')];
+  while (wrappers.length < cardColumnCount) {
+    const column = document.createElement('div');
+    column.className = 'domain-card-column';
+    container.appendChild(column);
+    wrappers.push(column);
+  }
+  layout.columns.forEach((keys, index) => {
+    const column = wrappers[index];
+    keys.forEach((key, position) => {
+      const card = cards.get(key);
+      if (card && column.children[position] !== card) column.insertBefore(card, column.children[position] || null);
+    });
+  });
+  wrappers.slice(cardColumnCount).forEach(column => column.remove());
+  container.style.gridTemplateColumns = `repeat(${cardColumnCount}, minmax(0, 1fr))`;
+  if (!cardLayoutObserver && typeof ResizeObserver !== 'undefined') {
+    cardLayoutObserver = new ResizeObserver(() => {
+      if (getCardColumnCount() !== cardColumnCount) layoutDomainCards();
+    });
+    cardLayoutObserver.observe(container);
+  }
+}
 let cardOrderQueue = Promise.resolve();
 function updateCardOrder(action, source, target) {
   const operation = cardOrderQueue.then(async () => {
     const saved = await chrome.storage.local.get('domainCardOrder');
-    const state = changeCardOrder(domainGroups, saved.domainCardOrder, action, source, target);
-    await chrome.storage.local.set({ domainCardOrder: state });
-    domainGroups = sortDomainCards(domainGroups, state);
-    const container = document.getElementById('openTabsMissions');
-    const cards = new Map([...container.querySelectorAll('.domain-card')].map(card => [card.dataset.groupKey, card]));
-    for (const group of domainGroups) {
-      const card = cards.get(group.domain);
-      if (card) container.appendChild(card);
+    let state = saved.domainCardOrder || {};
+    if (action === 'reset') {
+      state = {};
+    } else {
+      const count = getCardColumnCount();
+      const layout = buildCardColumns(domainGroups, state, count);
+      state = {...state, layouts: {...state.layouts, [count]: changeCardColumns(layout, action, source, target)}};
     }
+    await chrome.storage.local.set({domainCardOrder:state});
+    domainGroups = sortDomainCards(domainGroups, state);
+    layoutDomainCards(state);
   });
   cardOrderQueue = operation.catch(() => showToast(T('order.failed')));
   return cardOrderQueue;
@@ -1853,8 +1915,8 @@ function renderDomainCard(group) {
       <div class="mission-content">
         <div class="card-order-controls">
           <span class="card-drag-handle" draggable="true" title="${T('order.drag')}" aria-label="${T('order.drag')}">⠿</span>
-          <button class="card-order-button" data-action="card-top" title="${T('order.top')}" aria-label="${T('order.top')}">↑ ${T('order.top')}</button>
-          <button class="card-order-button" data-action="card-bottom" title="${T('order.bottom')}" aria-label="${T('order.bottom')}">↓ ${T('order.bottom')}</button>
+          <button class="card-order-button" data-action="card-top" title="${T('order.topHint')}" aria-label="${T('order.topHint')}">↑ ${T('order.top')}</button>
+          <button class="card-order-button" data-action="card-bottom" title="${T('order.bottomHint')}" aria-label="${T('order.bottomHint')}">↓ ${T('order.bottom')}</button>
         </div>
         <div class="mission-top">
           <span class="mission-name">${isLanding ? T('section.homepages') : (group.label || friendlyDomain(group.domain))}</span>
@@ -2451,6 +2513,7 @@ async function renderStaticDashboard() {
     openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
     wireFaviconFallbacks(openTabsMissionsEl);
     openTabsSection.style.display = 'block';
+    layoutDomainCards(savedCardOrder.domainCardOrder || {});
   } else if (openTabsSection) {
     openTabsSection.style.display = 'none';
   }
