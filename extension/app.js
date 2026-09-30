@@ -1586,6 +1586,101 @@ const ICONS = {
    ---------------------------------------------------------------- */
 let domainGroups = [];
 
+// CARD ORDER MODEL: pure functions, shared by rendering and ordering commands.
+function normalizeCardOrder(value) {
+  const clean = list => Array.isArray(list) ? [...new Set(list.filter(x => typeof x === 'string' && x))] : [];
+  const top = clean(value?.top);
+  return { order: clean(value?.order), top, bottom: clean(value?.bottom).filter(x => !top.includes(x)) };
+}
+function sortDomainCards(groups, value) {
+  const state = normalizeCardOrder(value);
+  const rank = (list, key) => list.includes(key) ? list.indexOf(key) : Infinity;
+  const zone = key => state.top.includes(key) ? 0 : state.bottom.includes(key) ? 2 : 1;
+  return [...groups].sort((a, b) => {
+    const az = zone(a.domain), bz = zone(b.domain);
+    if (az !== bz) return az - bz;
+    const list = az === 0 ? state.top : az === 2 ? state.bottom : state.order;
+    const diff = rank(list, a.domain) - rank(list, b.domain);
+    return (Number.isNaN(diff) ? 0 : diff) || b.tabs.length - a.tabs.length || a.domain.localeCompare(b.domain);
+  });
+}
+function changeCardOrder(groups, value, action, source, target) {
+  if (action === 'reset') return normalizeCardOrder(null);
+  const state = normalizeCardOrder(value);
+  const ids = sortDomainCards(groups, state).map(g => g.domain);
+  if (!ids.includes(source)) return state;
+  if (action === 'swap') {
+    if (!ids.includes(target) || source === target) return state;
+    const a = ids.indexOf(source), b = ids.indexOf(target);
+    [ids[a], ids[b]] = [ids[b], ids[a]];
+    const exchange = key => key === source ? target : key === target ? source : key;
+    state.top = state.top.map(exchange);
+    state.bottom = state.bottom.map(exchange);
+  } else if (action === 'top' || action === 'bottom') {
+    state.top = state.top.filter(x => x !== source);
+    state.bottom = state.bottom.filter(x => x !== source);
+    if (action === 'top') state.top.unshift(source);
+    else state.bottom.push(source);
+  } else return state;
+  state.order = [...ids, ...state.order.filter(x => !ids.includes(x))];
+  return state;
+}
+// END CARD ORDER MODEL
+
+let cardOrderQueue = Promise.resolve();
+function updateCardOrder(action, source, target) {
+  const operation = cardOrderQueue.then(async () => {
+    const saved = await chrome.storage.local.get('domainCardOrder');
+    const state = changeCardOrder(domainGroups, saved.domainCardOrder, action, source, target);
+    await chrome.storage.local.set({ domainCardOrder: state });
+    domainGroups = sortDomainCards(domainGroups, state);
+    const container = document.getElementById('openTabsMissions');
+    const cards = new Map([...container.querySelectorAll('.domain-card')].map(card => [card.dataset.groupKey, card]));
+    for (const group of domainGroups) {
+      const card = cards.get(group.domain);
+      if (card) container.appendChild(card);
+    }
+  });
+  cardOrderQueue = operation.catch(() => showToast(T('order.failed')));
+  return cardOrderQueue;
+}
+
+let draggedCardKey = null;
+function clearCardDrag() {
+  draggedCardKey = null;
+  document.querySelectorAll('.card-dragging, .card-drop-target').forEach(el => el.classList.remove('card-dragging', 'card-drop-target'));
+}
+document.addEventListener('dragstart', e => {
+  const handle = e.target.closest('.card-drag-handle');
+  if (!handle) return;
+  const card = handle.closest('.domain-card');
+  draggedCardKey = card.dataset.groupKey;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', draggedCardKey);
+  e.dataTransfer.setDragImage(card, 20, 20);
+  card.classList.add('card-dragging');
+});
+document.addEventListener('dragover', e => {
+  if (draggedCardKey === null) return;
+  const card = e.target.closest('#openTabsMissions .domain-card');
+  document.querySelectorAll('.card-drop-target').forEach(el => el.classList.remove('card-drop-target'));
+  if (!card || card.dataset.groupKey === draggedCardKey) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  card.classList.add('card-drop-target');
+});
+document.addEventListener('drop', e => {
+  if (draggedCardKey === null) return;
+  const card = e.target.closest('#openTabsMissions .domain-card');
+  const source = draggedCardKey;
+  clearCardDrag();
+  if (!card) return;
+  e.preventDefault();
+  updateCardOrder('swap', source, card.dataset.groupKey);
+});
+document.addEventListener('dragend', clearCardDrag);
+
+
 
 /* ----------------------------------------------------------------
    HELPER: filter out browser-internal pages
@@ -1753,9 +1848,14 @@ function renderDomainCard(group) {
   }
 
   return `
-    <div class="mission-card domain-card ${hasDupes ? 'has-amber-bar' : 'has-neutral-bar'}" data-domain-id="${stableId}">
+    <div class="mission-card domain-card ${hasDupes ? 'has-amber-bar' : 'has-neutral-bar'}" data-domain-id="${stableId}" data-group-key="${escapeAttr(group.domain)}">
       <div class="status-bar"></div>
       <div class="mission-content">
+        <div class="card-order-controls">
+          <span class="card-drag-handle" draggable="true" title="${T('order.drag')}" aria-label="${T('order.drag')}">⠿</span>
+          <button class="card-order-button" data-action="card-top" title="${T('order.top')}" aria-label="${T('order.top')}">↑ ${T('order.top')}</button>
+          <button class="card-order-button" data-action="card-bottom" title="${T('order.bottom')}" aria-label="${T('order.bottom')}">↓ ${T('order.bottom')}</button>
+        </div>
         <div class="mission-top">
           <span class="mission-name">${isLanding ? T('section.homepages') : (group.label || friendlyDomain(group.domain))}</span>
           ${tabBadge}
@@ -2318,25 +2418,8 @@ async function renderStaticDashboard() {
     groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
   }
 
-  // Sort: landing pages first, then domains from landing page sites, then by tab count
-  // Collect exact hostnames and suffix patterns for priority sorting
-  const landingHostnames = new Set(LANDING_PAGE_PATTERNS.map(p => p.hostname).filter(Boolean));
-  const landingSuffixes = LANDING_PAGE_PATTERNS.map(p => p.hostnameEndsWith).filter(Boolean);
-  function isLandingDomain(domain) {
-    if (landingHostnames.has(domain)) return true;
-    return landingSuffixes.some(s => domain.endsWith(s));
-  }
-  domainGroups = Object.values(groupMap).sort((a, b) => {
-    const aIsLanding = a.domain === '__landing-pages__';
-    const bIsLanding = b.domain === '__landing-pages__';
-    if (aIsLanding !== bIsLanding) return aIsLanding ? -1 : 1;
-
-    const aIsPriority = isLandingDomain(a.domain);
-    const bIsPriority = isLandingDomain(b.domain);
-    if (aIsPriority !== bIsPriority) return aIsPriority ? -1 : 1;
-
-    return b.tabs.length - a.tabs.length;
-  });
+  const savedCardOrder = await chrome.storage.local.get('domainCardOrder');
+  domainGroups = sortDomainCards(Object.values(groupMap), savedCardOrder.domainCardOrder);
 
   // --- Render domain cards ---
   const openTabsSection      = document.getElementById('openTabsSection');
@@ -2353,6 +2436,7 @@ async function renderStaticDashboard() {
     // 一起挪到独立的一行，否则 nowrap 的 count 行在窄窗口下会挤爆。
     if (openTabsActionsEl) {
       openTabsActionsEl.innerHTML = `
+        <button class="action-btn" data-action="card-reset">${T('order.reset')}</button>
         <button class="action-btn save-tabs" data-action="save-all-open-tabs" data-close-after="0">
           ${ICONS.save} ${T('action.saveAll')}
         </button>
@@ -3314,6 +3398,10 @@ document.addEventListener('click', async (e) => {
   if (!actionEl) return;
 
   const action = actionEl.dataset.action;
+  if (['card-top', 'card-bottom', 'card-reset'].includes(action)) {
+    await updateCardOrder(action.slice(5), actionEl.closest('.domain-card')?.dataset.groupKey);
+    return;
+  }
 
   // ---- Close duplicate Guilong tabs ----
   if (action === 'close-tabout-dupes') {

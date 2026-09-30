@@ -173,6 +173,29 @@ async function stop() {
     assert.equal(await evaluate('domainGroups.some(g=>g.tabs.some(t=>t.url.includes("127.0.0.1")))'), true);
     assert.equal(await evaluate('domainGroups.some(g=>g.tabs.some(t=>t.url.includes("localhost")))'), true);
   });
+  await check('card count sorting, drag swap, top/bottom and persistence', async () => {
+    const order = 'Array.from(document.querySelectorAll("#openTabsMissions .domain-card"), c=>c.dataset.groupKey)';
+    assert.deepEqual(await evaluate(order), ['127.0.0.1', 'localhost']);
+    await evaluate(`(() => {
+      const cards = document.querySelectorAll('#openTabsMissions .domain-card');
+      const dataTransfer = new DataTransfer();
+      cards[1].querySelector('.card-drag-handle').dispatchEvent(new DragEvent('dragstart', {bubbles:true,dataTransfer}));
+      cards[0].dispatchEvent(new DragEvent('dragover', {bubbles:true,cancelable:true,dataTransfer}));
+      cards[0].dispatchEvent(new DragEvent('drop', {bubbles:true,cancelable:true,dataTransfer}));
+      return true;
+    })()`);
+    await waitFor(`(${order})[0] === 'localhost'`);
+    await click('[data-group-key="localhost"] [data-action="card-bottom"]');
+    await waitFor(`(${order})[1] === 'localhost'`);
+    await click('[data-group-key="localhost"] [data-action="card-top"]');
+    await waitFor(`(${order})[0] === 'localhost'`);
+    await navigate(dashboard);
+    assert.deepEqual(await evaluate(order), ['localhost','127.0.0.1']);
+    await click('[data-action="card-reset"]');
+    await waitFor(`(${order})[0] === '127.0.0.1'`);
+    await navigate(dashboard);
+    assert.deepEqual(await evaluate(order), ['127.0.0.1','localhost']);
+  });
   await check('deduplicate via actual UI event', async () => {
     await click('[data-action="dedup-keep-one"]');
     await waitFor(`(async()=> (await chrome.tabs.query({})).filter(t=>t.url===${JSON.stringify(first)}).length===1)()`);

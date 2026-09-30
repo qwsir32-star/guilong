@@ -2183,3 +2183,13 @@ html[data-theme="ink"] {
   --rgb-on-accent: 16 20 29;
   --rgb-accent-sage-strong: 86 140 155;
 }
+
+/* Keep sorting controls separate from wrapping titles and badges. */
+.card-order-controls { display:flex; align-items:center; gap:6px; margin:-6px 0 8px; }
+.card-drag-handle { cursor:grab; user-select:none; font-size:22px; padding:2px 8px 2px 0; margin-right:auto; color:var(--ink-muted, #827b72); }
+.card-drag-handle:active { cursor:grabbing; }
+.card-order-button { font:inherit; font-size:11px; color:var(--ink); background:transparent; border:1px solid var(--warm-gray); border-radius:4px; padding:4px 7px; cursor:pointer; }
+.card-order-button:hover { background:var(--warm-gray); }
+.card-order-button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+.domain-card.card-dragging { opacity:.45; }
+.domain-card.card-drop-target { outline:2px solid var(--ink); outline-offset:-2px; transform:translateY(-2px); }

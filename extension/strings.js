@@ -90,6 +90,11 @@ const STRINGS = {
 
   /* ============================ 中文 ============================ */
   zh: {
+    'order.drag': '拖动到另一张卡片上交换位置',
+    'order.top': '置顶',
+    'order.bottom': '置底',
+    'order.reset': '按标签数排序',
+    'order.failed': '排序保存失败，请重试',
 
     /* ---- 问候语 / 日期 / 相对时间 ---- */
     'greeting.morning':        '早上好',
@@ -315,6 +320,11 @@ const STRINGS = {
      原版文案尽量原样保留（"Saved for later"、"Nothing saved. Living in
      the moment." 等），这样切回英文时观感和上游一致。 */
   en: {
+    'order.drag': 'Drag onto another card to swap positions',
+    'order.top': 'Top',
+    'order.bottom': 'Bottom',
+    'order.reset': 'Sort by tab count',
+    'order.failed': 'Could not save the order. Please try again.',
 
     'greeting.morning':        'Good morning',
     'greeting.afternoon':      'Good afternoon',
