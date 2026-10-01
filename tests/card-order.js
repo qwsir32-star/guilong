@@ -48,3 +48,23 @@ assert.equal(plain(countDecreased.columns)[0][0],'a','Returning to old counts mu
 const legacyState={layouts:{3:{columns:[['a','d'],['b','e'],['c','github.com']],bottom:[]}}};
 assert.equal(plain(context.reconcileCardOrder(afterGrowth,legacyState).layouts[3].columns)[0][0],'github.com');
 console.log('Count decrease and old layout migration passed');
+// Reproduce the user's existing profile: multiple legacy top pins hide the busiest card.
+const stackedGroups=[{domain:'falin.top',tabs:[1]},{domain:'github.com',tabs:[1,2]},{domain:'example.test',tabs:[1]}];
+const stackedSaved={layouts:{3:{columns:[['example.test'],[],['falin.top','github.com']],top:['falin.top','github.com'],bottom:[],counts:[['example.test',1],['falin.top',1],['github.com',2]]}}};
+const stackedReconciled=context.reconcileCardOrder(stackedGroups,stackedSaved);
+assert.equal(plain(stackedReconciled.layouts[3].columns)[2][0],'github.com','The busiest of several legacy top pins must appear at the top of its column');
+console.log('Multiple legacy top pins: count priority passed');
+const toggled=context.changeCardColumns(stackedReconciled.layouts[3],'top','github.com');
+const unpinned=context.reconcileCardOrder(stackedGroups,{layouts:{3:plain(toggled)}}).layouts[3];
+assert.equal(plain(unpinned.top).includes('github.com'),false);
+assert.equal(plain(unpinned.columns)[0][0],'github.com','Cancel top pin restores default count priority');
+const pinnedAgain=context.changeCardColumns(unpinned,'bottom','github.com');
+assert.equal(plain(pinnedAgain.bottom).includes('github.com'),true);
+const unbottom=context.changeCardColumns(pinnedAgain,'bottom','github.com');
+assert.equal(plain(unbottom.bottom).includes('github.com'),false);
+console.log('Pin toggles: explicit cancellation restores automatic sorting');
+
+const globalLegacy={...stackedSaved,top:['falin.top','github.com'],order:['falin.top','github.com'],bottom:[]};
+const migratedLegacy=context.reconcileCardOrder(stackedGroups,globalLegacy);
+assert.equal('top' in migratedLegacy,false,'Remove global legacy pins after column migration to prevent cancelled pins resurfacing');
+assert.equal(plain(migratedLegacy.layouts[3].top).includes('github.com'),true,'Migration preserves the active column pin');

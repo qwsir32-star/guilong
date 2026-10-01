@@ -2199,3 +2199,5 @@ html[data-theme="ink"] {
 .domain-card-column { min-width:0; }
 .active-section #openTabsMissions .domain-card { animation:none; }
 #openTabsMissions > .missions-empty-state { grid-column:1 / -1; }
+
+.card-order-button.is-pinned { background:var(--warm-gray); font-weight:600; border-color:var(--ink); }

@@ -1617,9 +1617,10 @@ function buildCardColumns(groups, saved, count) {
   const bottom = cleanPins(old?.bottom, legacy.bottom).filter(key => !top.includes(key));
   // An unchanged count snapshot preserves swaps. Older snapshots are reconciled once.
   // Explicit pins keep their column; every other card returns to count priority.
-  if (JSON.stringify(old?.counts) !== JSON.stringify(counts)) {
+  if (old?.priorityVersion !== 1 || JSON.stringify(old?.counts) !== JSON.stringify(counts)) {
     const pinnedBottom = columns.map(column => column.filter(key => bottom.includes(key)));
-    columns = columns.map(column => column.filter(key => top.includes(key)));
+    const tabCounts = new Map(ordered.map(group => [group.domain, group.tabs.length]));
+    columns = columns.map(column => column.filter(key => top.includes(key)).sort((a,b) => tabCounts.get(b) - tabCounts.get(a)));
     const remaining = ordered.filter(group => !top.includes(group.domain) && !bottom.includes(group.domain));
     for (const group of remaining) {
       const column = columns.reduce((best, c) => c.length < best.length ? c : best, columns[0]);
@@ -1634,7 +1635,7 @@ function buildCardColumns(groups, saved, count) {
       else column.push(key);
     }
   }
-  return { columns, top, bottom, counts };
+  return { columns, top, bottom, counts, priorityVersion:1 };
 }
 function changeCardColumns(layout, action, source, target) {
   const columns = layout.columns.map(column => [...column]);
@@ -1643,6 +1644,9 @@ function changeCardColumns(layout, action, source, target) {
   const from = columns.find(column => column.includes(source));
   if (!from) return {...layout, columns, top, bottom};
   const index = from.indexOf(source);
+  if ((action === 'top' && top.includes(source)) || (action === 'bottom' && bottom.includes(source))) {
+    return {...layout, columns, top:top.filter(key => key !== source), bottom:bottom.filter(key => key !== source), priorityVersion:0};
+  }
   if (action === 'swap') {
     const to = columns.find(column => column.includes(target));
     if (!to || source === target) return {...layout, columns, top, bottom};
@@ -1668,6 +1672,11 @@ function reconcileCardOrder(groups, saved) {
   for (const [count, layout] of Object.entries(saved?.layouts || {})) {
     if (!/^[1-9]\d*$/.test(count) || Number(count) > 50) continue;
     layouts[count] = buildCardColumns(groups, {...saved, layouts:{[count]:layout}}, Number(count));
+  }
+  if (Object.keys(layouts).length) {
+    // Once migrated, old global pins must not reappear after a pin is cancelled.
+    const {order, top, bottom, ...remaining} = saved || {};
+    return {...remaining, layouts};
   }
   return {...saved, layouts};
 }
@@ -1697,6 +1706,18 @@ function layoutDomainCards(saved = displayedCardOrder) {
     const column = wrappers[index];
     keys.forEach((key, position) => {
       const card = cards.get(key);
+      if (card) {
+        for (const side of ['top','bottom']) {
+          const button = card.querySelector(`[data-action="card-${side}"]`);
+          const pinned = layout[side].includes(key);
+          button.textContent = `${side === 'top' ? '↑' : '↓'} ${T(pinned ? (side === 'top' ? 'order.pinnedTop' : 'order.pinnedBottom') : (side === 'top' ? 'order.top' : 'order.bottom'))}`;
+          const label = T(pinned ? (side === 'top' ? 'order.unpinTop' : 'order.unpinBottom') : (side === 'top' ? 'order.topHint' : 'order.bottomHint'));
+          button.title = label;
+          button.setAttribute('aria-label',label);
+          button.setAttribute('aria-pressed',String(pinned));
+          button.classList.toggle('is-pinned',pinned);
+        }
+      }
       if (card && column.children[position] !== card) column.insertBefore(card, column.children[position] || null);
     });
   });
@@ -1721,6 +1742,7 @@ function updateCardOrder(action, source, target) {
       const layout = buildCardColumns(domainGroups, state, count);
       state = {...state, layouts: {...state.layouts, [count]: changeCardColumns(layout, action, source, target)}};
     }
+    state = reconcileCardOrder(domainGroups,state);
     await chrome.storage.local.set({domainCardOrder:state});
     domainGroups = sortDomainCards(domainGroups, state);
     layoutDomainCards(state);

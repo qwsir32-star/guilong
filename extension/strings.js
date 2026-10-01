@@ -92,6 +92,10 @@ const STRINGS = {
   zh: {
     'order.drag': '拖动到另一张卡片上交换位置',
     'order.top': '置顶',
+    'order.pinnedTop': '已置顶',
+    'order.pinnedBottom': '已置底',
+    'order.unpinTop': '取消置顶，恢复数量排序',
+    'order.unpinBottom': '取消置底，恢复数量排序',
     'order.topHint': '移到本列顶部',
     'order.bottomHint': '移到本列底部',
     'order.bottom': '置底',
@@ -325,6 +329,10 @@ const STRINGS = {
   en: {
     'order.drag': 'Drag onto another card to swap positions',
     'order.top': 'Top',
+    'order.pinnedTop': 'Pinned top',
+    'order.pinnedBottom': 'Pinned bottom',
+    'order.unpinTop': 'Unpin from top and restore count sorting',
+    'order.unpinBottom': 'Unpin from bottom and restore count sorting',
     'order.topHint': 'Move to the top of this column',
     'order.bottomHint': 'Move to the bottom of this column',
     'order.bottom': 'Bottom',

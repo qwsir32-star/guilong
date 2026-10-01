@@ -272,6 +272,25 @@ async function stop() {
     }
     await evaluate(`(async()=>{document.getElementById('openTabsMissions').style.width='';await chrome.storage.local.set({domainCardOrder:{}});await renderDashboard();return true;})()`);
   });
+  await check('legacy stacked top pins prioritize counts and show cancellable pin state', async () => {
+    const result = await evaluate(`(async()=>{
+      const container=document.getElementById('openTabsMissions');container.style.width='900px';
+      const sample=domainGroups[0].tabs[0];
+      domainGroups=['falin.top','github.com','example.test'].map(domain=>({domain,tabs:Array.from({length:domain==='github.com'?2:1},(_,i)=>({...sample,url:'https://'+domain+'/page-'+i,title:'Page '+i}))}));
+      const old={layouts:{3:{columns:[['example.test'],[],['falin.top','github.com']],top:['falin.top','github.com'],bottom:[],counts:[['example.test',1],['falin.top',1],['github.com',2]]}}};
+      const state=reconcileCardOrder(domainGroups,old);await chrome.storage.local.set({domainCardOrder:state});
+      container.innerHTML=domainGroups.map(renderDomainCard).join('');layoutDomainCards(state);
+      const card=container.querySelector('[data-group-key="github.com"]');
+      const rect=card.getBoundingClientRect();const first=container.querySelector('.domain-card').getBoundingClientRect();
+      return {deltaY:rect.y-first.y,label:card.querySelector('[data-action="card-top"]').textContent,pressed:card.querySelector('[data-action="card-top"]').getAttribute('aria-pressed')};
+    })()`);
+    assert.ok(Math.abs(result.deltaY)<5,'GitHub must be in the top row');
+    assert.equal(result.pressed,'true');
+    await click('[data-group-key="github.com"] [data-action="card-top"]');
+    await waitFor(`document.querySelector('[data-group-key="github.com"] [data-action="card-top"]')?.getAttribute('aria-pressed') === 'false'`);
+    assert.equal(await evaluate('document.querySelector("#openTabsMissions .domain-card").dataset.groupKey'),'github.com');
+    await evaluate(`(async()=>{document.getElementById('openTabsMissions').style.width='';await chrome.storage.local.set({domainCardOrder:{}});await renderDashboard();return true;})()`);
+  });
   await check('deduplicate via actual UI event', async () => {
     await click('[data-action="dedup-keep-one"]');
     await waitFor(`(async()=> (await chrome.tabs.query({})).filter(t=>t.url===${JSON.stringify(first)}).length===1)()`);
