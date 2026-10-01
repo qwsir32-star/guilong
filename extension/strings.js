@@ -96,6 +96,7 @@ const STRINGS = {
     'order.bottomHint': '移到本列底部',
     'order.bottom': '置底',
     'order.reset': '按标签数排序',
+    'order.rule': '标签数变化时自动按数量重排；明确置顶或置底的卡片保留位置',
     'order.failed': '排序保存失败，请重试',
 
     /* ---- 问候语 / 日期 / 相对时间 ---- */
@@ -328,6 +329,7 @@ const STRINGS = {
     'order.bottomHint': 'Move to the bottom of this column',
     'order.bottom': 'Bottom',
     'order.reset': 'Sort by tab count',
+    'order.rule': 'Tab count changes restore count priority; explicit top and bottom positions are preserved',
     'order.failed': 'Could not save the order. Please try again.',
 
     'greeting.morning':        'Good morning',

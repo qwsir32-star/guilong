@@ -18,7 +18,9 @@ assert.deepEqual(plain(layout.columns),[['1','3','6'],['7','4','0'],['2','5','8'
 const state={layouts:{3:plain(layout)}};
 assert.deepEqual(plain(context.buildCardColumns(groups,state,3)),plain(layout));
 const expanded=context.buildCardColumns([...groups,{domain:'9',tabs:[1]},{domain:'10',tabs:[1]}],state,3);
-assert.deepEqual(plain(expanded.columns[1]),['7','4','10','0']);
+assert.equal(plain(expanded.columns[1])[0],'7');
+assert.equal(plain(expanded.columns[1]).at(-1),'0');
+assert.equal(new Set(plain(expanded.columns).flat()).size,11);
 const missing=context.changeCardColumns(layout,'swap','missing','0');
 assert.deepEqual(plain(missing),plain(layout));
 assert.deepEqual(plain(context.buildCardColumns(groups,{},1).columns),[groups.map(g=>g.domain)]);
@@ -26,3 +28,23 @@ const malformed=context.buildCardColumns(groups,{layouts:{3:{columns:[['0','0',n
 assert.equal(new Set(plain(malformed.columns).flat()).size,9);
 assert.equal(plain(malformed.columns).flat().length,9);
 console.log('Card columns: count order, cross-column swaps, local top/bottom, storage, new cards, responsive layout and invalid data passed');
+// A saved swap must not freeze unpinned cards after tab counts change.
+const beforeGrowth = ['a','b','c','d','e','github.com'].map(domain=>({domain,tabs:[1]}));
+const growthLayout=context.buildCardColumns(beforeGrowth,{},3);
+let growthSaved={layouts:{3:plain(context.changeCardColumns(growthLayout,'swap','a','b'))}};
+const afterGrowth=beforeGrowth.map(g=>({...g,tabs:Array(g.domain==='github.com'?5:1).fill(1)}));
+const promoted=context.buildCardColumns(afterGrowth,growthSaved,3);
+assert.equal(plain(promoted.columns)[0][0],'github.com','Count growth must promote the previously saved bottom card');
+let pinnedGrowth=context.changeCardColumns(growthLayout,'top','d');
+pinnedGrowth=context.changeCardColumns(pinnedGrowth,'bottom','github.com');
+const growthWithPins=context.buildCardColumns(afterGrowth,{layouts:{3:plain(pinnedGrowth)}},3);
+assert.equal(plain(growthWithPins.columns)[0][0],'d','Explicit top survives count changes');
+assert.equal(plain(growthWithPins.columns)[2].at(-1),'github.com','Explicit bottom survives count changes');
+console.log('Tab count growth: automatic priority and explicit pins passed');
+
+const reconciled=context.reconcileCardOrder(afterGrowth,growthSaved);
+const countDecreased=context.buildCardColumns(beforeGrowth,reconciled,3);
+assert.equal(plain(countDecreased.columns)[0][0],'a','Returning to old counts must not resurrect an old swap');
+const legacyState={layouts:{3:{columns:[['a','d'],['b','e'],['c','github.com']],bottom:[]}}};
+assert.equal(plain(context.reconcileCardOrder(afterGrowth,legacyState).layouts[3].columns)[0][0],'github.com');
+console.log('Count decrease and old layout migration passed');

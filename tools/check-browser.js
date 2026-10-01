@@ -192,6 +192,18 @@ async function stop() {
     await navigate(dashboard);
     assert.deepEqual(await evaluate(order), ['127.0.0.1','localhost']);
   });
+  await check('tab count growth overrides saved swaps and reset restores automatic order', async () => {
+    const order = 'Array.from(document.querySelectorAll("#openTabsMissions .domain-card"), c=>c.dataset.groupKey)';
+    await evaluate("updateCardOrder('swap','127.0.0.1','localhost').then(()=>true)");
+    assert.equal((await evaluate(order))[0],'localhost');
+    const extra = await evaluate(`(async()=>{const ids=[];for(let i=0;i<3;i++) ids.push((await chrome.tabs.create({url:${JSON.stringify(first)},active:false})).id);await renderDashboard();return ids;})()`);
+    assert.equal((await evaluate(order))[0],'127.0.0.1','Five tabs must move back above the saved one-tab card');
+    await navigate(dashboard);
+    assert.equal((await evaluate(order))[0],'127.0.0.1');
+    await evaluate(`(async()=>{await chrome.tabs.remove(${JSON.stringify(extra)});await renderDashboard();return true;})()`);
+    assert.equal((await evaluate(order))[0],'127.0.0.1','Count decrease must not resurrect the earlier saved swap');
+    await evaluate(`chrome.storage.local.set({domainCardOrder:{}}).then(()=>renderDashboard()).then(()=>true)`);
+  });
   await check('unequal height cards swap visual columns without replaying entrance animations', async () => {
     // Exercise a visible page; Firefox BiDi cannot activate privileged extension contexts.
     if (kind === 'firefox') await evaluate('(async()=>{const tab=await chrome.tabs.getCurrent();await chrome.tabs.update(tab.id,{active:true});return true;})()');

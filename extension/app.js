@@ -1592,62 +1592,84 @@ function normalizeCardOrder(value) {
   const top = clean(value?.top);
   return { order: clean(value?.order), top, bottom: clean(value?.bottom).filter(x => !top.includes(x)) };
 }
-function sortDomainCards(groups, value) {
-  const state = normalizeCardOrder(value);
-  const rank = (list, key) => list.includes(key) ? list.indexOf(key) : Infinity;
-  const zone = key => state.top.includes(key) ? 0 : state.bottom.includes(key) ? 2 : 1;
-  return [...groups].sort((a, b) => {
-    const az = zone(a.domain), bz = zone(b.domain);
-    if (az !== bz) return az - bz;
-    const list = az === 0 ? state.top : az === 2 ? state.bottom : state.order;
-    const diff = rank(list, a.domain) - rank(list, b.domain);
-    return (Number.isNaN(diff) ? 0 : diff) || b.tabs.length - a.tabs.length || a.domain.localeCompare(b.domain);
-  });
+function sortDomainCards(groups) {
+  return [...groups].sort((a, b) => b.tabs.length - a.tabs.length || a.domain.localeCompare(b.domain));
 }
 // END CARD ORDER MODEL
 
 // Column membership is explicit: CSS multi-column balancing cannot preserve a swap.
 // CARD COLUMN MODEL
 function buildCardColumns(groups, saved, count) {
-  const ids = new Set(groups.map(g => g.domain));
+  const ordered = sortDomainCards(groups);
+  const ids = new Set(ordered.map(g => g.domain));
+  const counts = ordered.map(g => [g.domain, g.tabs.length]).sort((a,b) => a[0].localeCompare(b[0]));
   const old = saved?.layouts?.[count];
   const seen = new Set();
-  const columns = Array.from({length:count}, (_, i) =>
+  let columns = Array.from({length:count}, (_, i) =>
     (Array.isArray(old?.columns?.[i]) ? old.columns[i] : []).filter(key => {
       if (!ids.has(key) || seen.has(key)) return false;
       seen.add(key);
       return true;
     }));
-  const bottom = Array.isArray(old?.bottom) ? old.bottom.filter(key => ids.has(key)) : [];
-  for (const group of groups) {
-    if (seen.has(group.domain)) continue;
-    const column = columns.reduce((best, c) => c.length < best.length ? c : best, columns[0]);
-    const end = column.findIndex(key => bottom.includes(key));
-    column.splice(end < 0 ? column.length : end, 0, group.domain);
+  const legacy = normalizeCardOrder(saved);
+  const cleanPins = (list, fallback) => [...new Set((Array.isArray(list) ? list : fallback).filter(key => ids.has(key)))];
+  const top = cleanPins(old?.top, legacy.top);
+  const bottom = cleanPins(old?.bottom, legacy.bottom).filter(key => !top.includes(key));
+  // An unchanged count snapshot preserves swaps. Older snapshots are reconciled once.
+  // Explicit pins keep their column; every other card returns to count priority.
+  if (JSON.stringify(old?.counts) !== JSON.stringify(counts)) {
+    const pinnedBottom = columns.map(column => column.filter(key => bottom.includes(key)));
+    columns = columns.map(column => column.filter(key => top.includes(key)));
+    const remaining = ordered.filter(group => !top.includes(group.domain) && !bottom.includes(group.domain));
+    for (const group of remaining) {
+      const column = columns.reduce((best, c) => c.length < best.length ? c : best, columns[0]);
+      column.push(group.domain);
+    }
+    columns.forEach((column, i) => column.push(...pinnedBottom[i]));
+    // Legacy global pins might have no column snapshot yet.
+    for (const key of [...top, ...bottom]) {
+      if (columns.some(column => column.includes(key))) continue;
+      const column = columns.reduce((best,c) => c.length < best.length ? c : best, columns[0]);
+      if (top.includes(key)) column.unshift(key);
+      else column.push(key);
+    }
   }
-  return { columns, bottom };
+  return { columns, top, bottom, counts };
 }
 function changeCardColumns(layout, action, source, target) {
   const columns = layout.columns.map(column => [...column]);
+  let top = [...layout.top];
   let bottom = [...layout.bottom];
   const from = columns.find(column => column.includes(source));
-  if (!from) return {columns, bottom};
+  if (!from) return {...layout, columns, top, bottom};
   const index = from.indexOf(source);
   if (action === 'swap') {
     const to = columns.find(column => column.includes(target));
-    if (!to || source === target) return {columns, bottom};
+    if (!to || source === target) return {...layout, columns, top, bottom};
     const targetIndex = to.indexOf(target);
     from[index] = target;
     to[targetIndex] = source;
-    bottom = bottom.map(key => key === source ? target : key === target ? source : key);
+    const exchange = key => key === source ? target : key === target ? source : key;
+    top = top.map(exchange);
+    bottom = bottom.map(exchange);
   } else if (action === 'top' || action === 'bottom') {
     from.splice(index, 1);
     if (action === 'top') from.unshift(source);
     else from.push(source);
+    top = top.filter(key => key !== source);
     bottom = bottom.filter(key => key !== source);
+    if (action === 'top') top.push(source);
     if (action === 'bottom') bottom.push(source);
   }
-  return {columns, bottom};
+  return {...layout, columns, top, bottom};
+}
+function reconcileCardOrder(groups, saved) {
+  const layouts = {};
+  for (const [count, layout] of Object.entries(saved?.layouts || {})) {
+    if (!/^[1-9]\d*$/.test(count) || Number(count) > 50) continue;
+    layouts[count] = buildCardColumns(groups, {...saved, layouts:{[count]:layout}}, Number(count));
+  }
+  return {...saved, layouts};
 }
 // END CARD COLUMN MODEL
 let displayedCardOrder = {};
@@ -1691,7 +1713,7 @@ let cardOrderQueue = Promise.resolve();
 function updateCardOrder(action, source, target) {
   const operation = cardOrderQueue.then(async () => {
     const saved = await chrome.storage.local.get('domainCardOrder');
-    let state = saved.domainCardOrder || {};
+    let state = reconcileCardOrder(domainGroups, saved.domainCardOrder || {});
     if (action === 'reset') {
       state = {};
     } else {
@@ -2480,8 +2502,18 @@ async function renderStaticDashboard() {
     groupMap['__landing-pages__'] = { domain: '__landing-pages__', tabs: landingTabs };
   }
 
-  const savedCardOrder = await chrome.storage.local.get('domainCardOrder');
-  domainGroups = sortDomainCards(Object.values(groupMap), savedCardOrder.domainCardOrder);
+  const rawGroups = Object.values(groupMap);
+  const readOrder = cardOrderQueue.then(async () => {
+    const saved = await chrome.storage.local.get('domainCardOrder');
+    const state = reconcileCardOrder(rawGroups, saved.domainCardOrder || {});
+    if (JSON.stringify(state) !== JSON.stringify(saved.domainCardOrder || {})) {
+      await chrome.storage.local.set({domainCardOrder:state});
+    }
+    return state;
+  });
+  cardOrderQueue = readOrder.catch(() => {});
+  const currentCardOrder = await readOrder;
+  domainGroups = sortDomainCards(rawGroups);
 
   // --- Render domain cards ---
   const openTabsSection      = document.getElementById('openTabsSection');
@@ -2498,7 +2530,7 @@ async function renderStaticDashboard() {
     // 一起挪到独立的一行，否则 nowrap 的 count 行在窄窗口下会挤爆。
     if (openTabsActionsEl) {
       openTabsActionsEl.innerHTML = `
-        <button class="action-btn" data-action="card-reset">${T('order.reset')}</button>
+        <button class="action-btn" data-action="card-reset" title="${T('order.rule')}">${T('order.reset')}</button>
         <button class="action-btn save-tabs" data-action="save-all-open-tabs" data-close-after="0">
           ${ICONS.save} ${T('action.saveAll')}
         </button>
@@ -2513,7 +2545,7 @@ async function renderStaticDashboard() {
     openTabsMissionsEl.innerHTML = domainGroups.map(g => renderDomainCard(g)).join('');
     wireFaviconFallbacks(openTabsMissionsEl);
     openTabsSection.style.display = 'block';
-    layoutDomainCards(savedCardOrder.domainCardOrder || {});
+    layoutDomainCards(currentCardOrder);
   } else if (openTabsSection) {
     openTabsSection.style.display = 'none';
   }
