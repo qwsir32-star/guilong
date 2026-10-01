@@ -196,7 +196,9 @@ async function stop() {
     const order = 'Array.from(document.querySelectorAll("#openTabsMissions .domain-card"), c=>c.dataset.groupKey)';
     await evaluate("updateCardOrder('swap','127.0.0.1','localhost').then(()=>true)");
     assert.equal((await evaluate(order))[0],'localhost');
-    const extra = await evaluate(`(async()=>{const ids=[];for(let i=0;i<3;i++) ids.push((await chrome.tabs.create({url:${JSON.stringify(first)},active:false})).id);await renderDashboard();return ids;})()`);
+    const extra = await evaluate(`(async()=>{const ids=[];for(let i=0;i<3;i++) ids.push((await chrome.tabs.create({url:${JSON.stringify(first)},active:false})).id);return ids;})()`);
+    await waitFor(`(async()=> (await chrome.tabs.query({})).filter(t=>t.url===${JSON.stringify(first)}).length===5)()`);
+    await evaluate('renderDashboard().then(()=>true)');
     assert.equal((await evaluate(order))[0],'127.0.0.1','Five tabs must move back above the saved one-tab card');
     await navigate(dashboard);
     assert.equal((await evaluate(order))[0],'127.0.0.1');
