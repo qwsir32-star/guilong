@@ -179,9 +179,10 @@ async function stop() {
     await evaluate(`(() => {
       const cards = document.querySelectorAll('#openTabsMissions .domain-card');
       const dataTransfer = new DataTransfer();
+      const rect=cards[0].getBoundingClientRect();const clientY=rect.top+rect.height/2;
       cards[1].querySelector('.card-drag-handle').dispatchEvent(new DragEvent('dragstart', {bubbles:true,dataTransfer}));
-      cards[0].dispatchEvent(new DragEvent('dragover', {bubbles:true,cancelable:true,dataTransfer}));
-      cards[0].dispatchEvent(new DragEvent('drop', {bubbles:true,cancelable:true,dataTransfer}));
+      cards[0].dispatchEvent(new DragEvent('dragover', {bubbles:true,cancelable:true,dataTransfer,clientY}));
+      cards[0].dispatchEvent(new DragEvent('drop', {bubbles:true,cancelable:true,dataTransfer,clientY}));
       return true;
     })()`);
     await waitFor(`(${order})[0] === 'localhost'`);
@@ -293,6 +294,48 @@ async function stop() {
       assert.ok(Math.max(...value.ends)-Math.min(...value.ends)<=value.shortCardHeight+2,step+': '+JSON.stringify(value));
     }
     assert.equal(geometry.remaining,17,'Closing a card must remove its group before repacking');
+    await evaluate(`(async()=>{document.getElementById('openTabsMissions').style.width='';await chrome.storage.local.set({domainCardOrder:{}});await renderDashboard();return true;})()`);
+  });
+  await check('card edge drops insert above and below, gap drops work and middle drops still swap', async () => {
+    const result=await evaluate(`(async()=>{
+      const container=document.getElementById('openTabsMissions');container.style.width='900px';
+      const sample=domainGroups[0].tabs[0];
+      domainGroups=Array.from({length:9},(_,i)=>({domain:'insert-'+i,tabs:[{...sample,url:'https://insert-'+i+'.test/',title:'Page '+i}]}));
+      container.innerHTML=domainGroups.map(renderDomainCard).join('');layoutDomainCards({});
+      await chrome.storage.local.set({domainCardOrder:{}});
+      const snapshot=()=>Array.from(container.querySelectorAll('.domain-card-column'),column=>Array.from(column.children,card=>card.dataset.groupKey));
+      const hints=[];
+      const drag=async(source,target,zone)=>{
+        const from=container.querySelector('[data-group-key="'+source+'"]');
+        const to=container.querySelector('[data-group-key="'+target+'"]');const rect=to.getBoundingClientRect();
+        const clientY=zone==='before'?rect.top+2:zone==='after'?rect.bottom-2:zone==='gap'?rect.bottom+6:rect.top+rect.height/2;
+        const clientX=rect.left+rect.width/2;const dataTransfer=new DataTransfer();
+        from.querySelector('.card-drag-handle').dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer}));
+        const hit=zone==='gap'?to.parentElement:to;
+        hit.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer,clientX,clientY}));
+        hints.push({before:to.classList.contains('card-drop-before'),after:to.classList.contains('card-drop-after'),swap:to.classList.contains('card-drop-target'),line:getComputedStyle(to,'::after').height});
+        hit.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer,clientX,clientY}));
+        await cardOrderQueue;
+        return snapshot();
+      };
+      const above=await drag('insert-0','insert-4','before');
+      const below=await drag('insert-0','insert-7','after');
+      const same=await drag('insert-6','insert-3','before');
+      const gap=await drag('insert-6','insert-4','gap');
+      const swapped=await drag('insert-6','insert-2','swap');
+      const saved=(await chrome.storage.local.get('domainCardOrder')).domainCardOrder;
+      container.innerHTML=domainGroups.map(renderDomainCard).join('');layoutDomainCards(saved);
+      return {above,below,same,gap,swapped,restored:snapshot(),hints,leftovers:container.querySelectorAll('.card-drop-before,.card-drop-after,.card-drop-target,.card-dragging').length,animations:container.querySelector('.domain-card').getAnimations().length};
+    })()`);
+    assert.deepEqual(result.above,[['insert-3','insert-6'],['insert-1','insert-0','insert-4','insert-7'],['insert-2','insert-5','insert-8']]);
+    assert.deepEqual(result.below,[['insert-3','insert-6'],['insert-1','insert-4','insert-7','insert-0'],['insert-2','insert-5','insert-8']]);
+    assert.deepEqual(result.same[0],['insert-6','insert-3']);
+    assert.deepEqual(result.gap,[['insert-3'],['insert-1','insert-4','insert-6','insert-7','insert-0'],['insert-2','insert-5','insert-8']]);
+    assert.deepEqual(result.swapped,[['insert-3'],['insert-1','insert-4','insert-2','insert-7','insert-0'],['insert-6','insert-5','insert-8']]);
+    assert.deepEqual(result.restored,result.swapped);
+    assert.ok(result.hints[0].before && result.hints[1].after && result.hints[2].before && result.hints[3].after && result.hints[4].swap);
+    assert.equal(result.hints[0].line,'3px','The insertion cue is visible');
+    assert.equal(result.leftovers,0);assert.equal(result.animations,0);
     await evaluate(`(async()=>{document.getElementById('openTabsMissions').style.width='';await chrome.storage.local.set({domainCardOrder:{}});await renderDashboard();return true;})()`);
   });
   await check('legacy stacked top pins prioritize counts and show cancellable pin state', async () => {

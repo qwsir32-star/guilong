@@ -84,3 +84,20 @@ assert.equal(plain(balancedWithBottom.columns)[bottomColumn].at(-1),'0','Measure
 const bottomTotals=plain(balancedWithBottom.columns).map(column=>column.reduce((sum,key)=>sum+heights[key],0));
 assert.ok(Math.max(...bottomTotals)-Math.min(...bottomTotals)<=200,'Reserve the height of pinned bottom cards when filling columns');
 console.log('Measured height balance, saved swaps and pinned bottom space passed');
+
+const insertionBase=context.buildCardColumns(groups,{},3);
+const above=context.changeCardColumns(insertionBase,'before','6','0');
+assert.deepEqual(plain(above.columns),[['6','0','3'],['1','4','7'],['2','5','8']]);
+const below=context.changeCardColumns(insertionBase,'after','0','6');
+assert.deepEqual(plain(below.columns),[['3','6','0'],['1','4','7'],['2','5','8']]);
+const cross=context.changeCardColumns(insertionBase,'before','0','4');
+assert.deepEqual(plain(cross.columns),[['3','6'],['1','0','4','7'],['2','5','8']]);
+const crossBelow=context.changeCardColumns(cross,'after','6','5');
+assert.deepEqual(plain(crossBelow.columns),[['3'],['1','0','4','7'],['2','5','6','8']]);
+assert.equal(new Set(plain(crossBelow.columns).flat()).size,9);
+assert.deepEqual(plain(context.buildCardColumns(groups,{layouts:{3:plain(crossBelow)}},3,heights).columns),plain(crossBelow.columns),'Insertion must survive reload and measured balancing');
+assert.deepEqual(plain(context.changeCardColumns(crossBelow,'before','0','0')),plain(crossBelow),'Dropping on itself does nothing');
+assert.deepEqual(plain(context.changeCardColumns(crossBelow,'after','0','missing')),plain(crossBelow),'An invalid insertion target does nothing');
+const insertPinned=context.changeCardColumns(context.changeCardColumns(insertionBase,'top','0'),'after','0','4');
+assert.equal(plain(insertPinned.top).includes('0'),false,'Moving to a manual slot cancels this card’s old edge pin');
+console.log('Insertion: same-column up/down, cross-column before/after, saved order and invalid targets passed');

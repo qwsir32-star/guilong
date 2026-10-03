@@ -90,7 +90,7 @@ const STRINGS = {
 
   /* ============================ 中文 ============================ */
   zh: {
-    'order.drag': '拖动到另一张卡片上交换位置',
+    'order.drag': '拖到卡片上缘／下缘插入，拖到中间交换位置',
     'order.top': '置顶',
     'order.pinnedTop': '已置顶',
     'order.pinnedBottom': '已置底',
@@ -327,7 +327,7 @@ const STRINGS = {
      原版文案尽量原样保留（"Saved for later"、"Nothing saved. Living in
      the moment." 等），这样切回英文时观感和上游一致。 */
   en: {
-    'order.drag': 'Drag onto another card to swap positions',
+    'order.drag': 'Drop near the top or bottom to insert; drop in the middle to swap',
     'order.top': 'Top',
     'order.pinnedTop': 'Pinned top',
     'order.pinnedBottom': 'Pinned bottom',

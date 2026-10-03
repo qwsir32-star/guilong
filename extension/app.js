@@ -1670,6 +1670,14 @@ function changeCardColumns(layout, action, source, target) {
     const exchange = key => key === source ? target : key === target ? source : key;
     top = top.map(exchange);
     bottom = bottom.map(exchange);
+  } else if (action === 'before' || action === 'after') {
+    const to = columns.find(column => column.includes(target));
+    if (!to || source === target) return {...layout, columns, top, bottom};
+    from.splice(index, 1);
+    to.splice(to.indexOf(target) + (action === 'after' ? 1 : 0), 0, source);
+    // A new manual position replaces this card's previous explicit edge pin.
+    top = top.filter(key => key !== source);
+    bottom = bottom.filter(key => key !== source);
   } else if (action === 'top' || action === 'bottom') {
     from.splice(index, 1);
     if (action === 'top') from.unshift(source);
@@ -1679,7 +1687,7 @@ function changeCardColumns(layout, action, source, target) {
     if (action === 'top') top.push(source);
     if (action === 'bottom') bottom.push(source);
   }
-  return {...layout, columns, top, bottom, manual:action === 'swap' ? true : layout.manual};
+  return {...layout, columns, top, bottom, manual:['swap','before','after'].includes(action) ? true : layout.manual};
 }
 function reconcileCardOrder(groups, saved) {
   const layouts = {};
@@ -1781,9 +1789,31 @@ function updateCardOrder(action, source, target) {
 }
 
 let draggedCardKey = null;
+function clearCardDropHint() {
+  document.querySelectorAll('.card-drop-target, .card-drop-before, .card-drop-after').forEach(el =>
+    el.classList.remove('card-drop-target', 'card-drop-before', 'card-drop-after'));
+}
 function clearCardDrag() {
   draggedCardKey = null;
-  document.querySelectorAll('.card-dragging, .card-drop-target').forEach(el => el.classList.remove('card-dragging', 'card-drop-target'));
+  clearCardDropHint();
+  document.querySelectorAll('.card-dragging').forEach(el => el.classList.remove('card-dragging'));
+}
+function cardDropTarget(e) {
+  const card = e.target.closest('#openTabsMissions .domain-card');
+  if (card) return card;
+  // The insertion line occupies the gap between cards; dropping there also works.
+  const column = e.target.closest('#openTabsMissions .domain-card-column');
+  return column && [...column.children].find(candidate => {
+    const rect = candidate.getBoundingClientRect();
+    return e.clientY >= rect.top - 12 && e.clientY <= rect.bottom + 12;
+  });
+}
+function cardDropAction(card, clientY) {
+  const rect = card.getBoundingClientRect();
+  const edge = Math.min(48, rect.height / 4);
+  if (clientY < rect.top + edge) return 'before';
+  if (clientY > rect.bottom - edge) return 'after';
+  return 'swap';
 }
 document.addEventListener('dragstart', e => {
   const handle = e.target.closest('.card-drag-handle');
@@ -1797,21 +1827,23 @@ document.addEventListener('dragstart', e => {
 });
 document.addEventListener('dragover', e => {
   if (draggedCardKey === null) return;
-  const card = e.target.closest('#openTabsMissions .domain-card');
-  document.querySelectorAll('.card-drop-target').forEach(el => el.classList.remove('card-drop-target'));
+  const card = cardDropTarget(e);
+  clearCardDropHint();
   if (!card || card.dataset.groupKey === draggedCardKey) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
-  card.classList.add('card-drop-target');
+  const action = cardDropAction(card, e.clientY);
+  card.classList.add(action === 'swap' ? 'card-drop-target' : `card-drop-${action}`);
 });
 document.addEventListener('drop', e => {
   if (draggedCardKey === null) return;
-  const card = e.target.closest('#openTabsMissions .domain-card');
+  const card = cardDropTarget(e);
   const source = draggedCardKey;
+  const action = card && cardDropAction(card, e.clientY);
   clearCardDrag();
   if (!card) return;
   e.preventDefault();
-  updateCardOrder('swap', source, card.dataset.groupKey);
+  updateCardOrder(action, source, card.dataset.groupKey);
 });
 document.addEventListener('dragend', clearCardDrag);
 

@@ -2192,7 +2192,11 @@ html[data-theme="ink"] {
 .card-order-button:hover { background:var(--warm-gray); }
 .card-order-button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
 .domain-card.card-dragging { opacity:.45; }
-.domain-card.card-drop-target { outline:2px solid var(--ink); outline-offset:-2px; transform:translateY(-2px); }
+.domain-card.card-drop-target { outline:2px solid var(--ink); outline-offset:-2px; }
+.domain-card.card-drop-before::after,
+.domain-card.card-drop-after::after { content:''; position:absolute; left:0; right:0; height:3px; background:var(--ink); border-radius:3px; pointer-events:none; }
+.domain-card.card-drop-before::after { top:-8px; }
+.domain-card.card-drop-after::after { bottom:-8px; }
 
 /* Explicit independent columns keep unequal-height cards in their chosen slots. */
 #openTabsMissions { display:grid; columns:auto; gap:12px; align-items:start; }
