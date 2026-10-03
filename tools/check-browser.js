@@ -274,6 +274,27 @@ async function stop() {
     }
     await evaluate(`(async()=>{document.getElementById('openTabsMissions').style.width='';await chrome.storage.local.set({domainCardOrder:{}});await renderDashboard();return true;})()`);
   });
+  await check('automatic columns fill actual height gaps instead of leaving a trailing card in the longest column', async () => {
+    const geometry = await evaluate(`(async()=>{
+      const container=document.getElementById('openTabsMissions');container.style.width='900px';
+      const sample=domainGroups[0].tabs[0];
+      domainGroups=Array.from({length:18},(_,i)=>({domain:'balance-'+String(i).padStart(2,'0'),tabs:Array.from({length:i===0?12:1},(_,j)=>({...sample,url:'https://balance-'+i+'.test/'+j,title:'Page '+j}))}));
+      container.innerHTML=domainGroups.map(renderDomainCard).join('');layoutDomainCards({});
+      const geometry=()=>({ends:Array.from(container.querySelectorAll('.domain-card-column')).map(c=>c.getBoundingClientRect().bottom),shortCardHeight:container.querySelector('[data-group-key="balance-01"]').getBoundingClientRect().height+12});
+      const initial=geometry();
+      container.querySelector('[data-group-key="balance-00"] [data-action="expand-chips"]').click();
+      const expanded=geometry();
+      animateCardOut(container.querySelector('[data-group-key="balance-00"]'));
+      await new Promise(resolve=>setTimeout(resolve,400));
+      return {initial,expanded,closed:geometry(),remaining:domainGroups.length};
+    })()`);
+    for (const step of ['initial','expanded','closed']) {
+      const value=geometry[step];
+      assert.ok(Math.max(...value.ends)-Math.min(...value.ends)<=value.shortCardHeight+2,step+': '+JSON.stringify(value));
+    }
+    assert.equal(geometry.remaining,17,'Closing a card must remove its group before repacking');
+    await evaluate(`(async()=>{document.getElementById('openTabsMissions').style.width='';await chrome.storage.local.set({domainCardOrder:{}});await renderDashboard();return true;})()`);
+  });
   await check('legacy stacked top pins prioritize counts and show cancellable pin state', async () => {
     const result = await evaluate(`(async()=>{
       const container=document.getElementById('openTabsMissions');container.style.width='900px';

@@ -68,3 +68,19 @@ const globalLegacy={...stackedSaved,top:['falin.top','github.com'],order:['falin
 const migratedLegacy=context.reconcileCardOrder(stackedGroups,globalLegacy);
 assert.equal('top' in migratedLegacy,false,'Remove global legacy pins after column migration to prevent cancelled pins resurfacing');
 assert.equal(plain(migratedLegacy.layouts[3].top).includes('github.com'),true,'Migration preserves the active column pin');
+
+// A tall first card must not receive another card while shorter columns have room.
+const balanceGroups=Array.from({length:18},(_,i)=>({domain:String(i),tabs:Array(i===0?8:1).fill(1)}));
+const heights=Object.fromEntries(balanceGroups.map(g=>[g.domain,g.domain==='0'?500:200]));
+const balanced=context.buildCardColumns(balanceGroups,{},3,heights);
+const totals=plain(balanced.columns).map(column=>column.reduce((sum,key)=>sum+heights[key],0));
+assert.ok(Math.max(...totals)-Math.min(...totals)<=200,'Automatic columns must fill measured height gaps');
+const swappedBalance=context.changeCardColumns(balanced,'swap','0','1');
+assert.deepEqual(plain(context.buildCardColumns(balanceGroups,{layouts:{3:plain(swappedBalance)}},3,heights).columns),plain(swappedBalance.columns),'Height balancing must preserve explicit swaps');
+const bottomBalance=context.changeCardColumns(balanced,'bottom','0');
+const bottomColumn=plain(bottomBalance.columns).findIndex(column=>column.includes('0'));
+const balancedWithBottom=context.buildCardColumns(balanceGroups,{layouts:{3:plain(bottomBalance)}},3,heights);
+assert.equal(plain(balancedWithBottom.columns)[bottomColumn].at(-1),'0','Measured balancing must preserve the pinned bottom card and its column');
+const bottomTotals=plain(balancedWithBottom.columns).map(column=>column.reduce((sum,key)=>sum+heights[key],0));
+assert.ok(Math.max(...bottomTotals)-Math.min(...bottomTotals)<=200,'Reserve the height of pinned bottom cards when filling columns');
+console.log('Measured height balance, saved swaps and pinned bottom space passed');

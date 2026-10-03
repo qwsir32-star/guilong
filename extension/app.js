@@ -1223,6 +1223,7 @@ function animateCardOut(card) {
   card.classList.add('closing');
   setTimeout(() => {
     card.remove();
+    refreshCardLayoutAfterClose();
     checkAndShowEmptyState();
   }, 300);
 }
@@ -1599,7 +1600,7 @@ function sortDomainCards(groups) {
 
 // Column membership is explicit: CSS multi-column balancing cannot preserve a swap.
 // CARD COLUMN MODEL
-function buildCardColumns(groups, saved, count) {
+function buildCardColumns(groups, saved, count, heights) {
   const ordered = sortDomainCards(groups);
   const ids = new Set(ordered.map(g => g.domain));
   const counts = ordered.map(g => [g.domain, g.tabs.length]).sort((a,b) => a[0].localeCompare(b[0]));
@@ -1615,16 +1616,29 @@ function buildCardColumns(groups, saved, count) {
   const cleanPins = (list, fallback) => [...new Set((Array.isArray(list) ? list : fallback).filter(key => ids.has(key)))];
   const top = cleanPins(old?.top, legacy.top);
   const bottom = cleanPins(old?.bottom, legacy.bottom).filter(key => !top.includes(key));
+  const sameCounts = JSON.stringify(old?.counts) === JSON.stringify(counts);
+  let manual = false;
+  if (old?.priorityVersion === 1 && sameCounts) {
+    if (typeof old.manual === 'boolean') manual = old.manual;
+    else {
+      // Recognize untouched count-based layouts while preserving older manual swaps.
+      const automatic = buildCardColumns(groups, {...saved, layouts:{[count]:{...old,counts:null}}}, count);
+      manual = JSON.stringify(columns) !== JSON.stringify(automatic.columns);
+    }
+  }
+  const heightOf = key => Number.isFinite(heights?.[key]) && heights[key] > 0 ? heights[key] : 1;
   // An unchanged count snapshot preserves swaps. Older snapshots are reconciled once.
   // Explicit pins keep their column; every other card returns to count priority.
-  if (old?.priorityVersion !== 1 || JSON.stringify(old?.counts) !== JSON.stringify(counts)) {
+  if (old?.priorityVersion !== 1 || !sameCounts || (heights && !manual)) {
     const pinnedBottom = columns.map(column => column.filter(key => bottom.includes(key)));
     const tabCounts = new Map(ordered.map(group => [group.domain, group.tabs.length]));
     columns = columns.map(column => column.filter(key => top.includes(key)).sort((a,b) => tabCounts.get(b) - tabCounts.get(a)));
     const remaining = ordered.filter(group => !top.includes(group.domain) && !bottom.includes(group.domain));
     for (const group of remaining) {
-      const column = columns.reduce((best, c) => c.length < best.length ? c : best, columns[0]);
-      column.push(group.domain);
+      const score = i => heights ? [...columns[i],...pinnedBottom[i]].reduce((sum,key) => sum+heightOf(key),0) : columns[i].length;
+      let shortest = 0;
+      for (let i=1;i<columns.length;i++) if (score(i)<score(shortest)) shortest=i;
+      columns[shortest].push(group.domain);
     }
     columns.forEach((column, i) => column.push(...pinnedBottom[i]));
     // Legacy global pins might have no column snapshot yet.
@@ -1635,7 +1649,7 @@ function buildCardColumns(groups, saved, count) {
       else column.push(key);
     }
   }
-  return { columns, top, bottom, counts, priorityVersion:1 };
+  return { columns, top, bottom, counts, priorityVersion:1, manual };
 }
 function changeCardColumns(layout, action, source, target) {
   const columns = layout.columns.map(column => [...column]);
@@ -1665,7 +1679,7 @@ function changeCardColumns(layout, action, source, target) {
     if (action === 'top') top.push(source);
     if (action === 'bottom') bottom.push(source);
   }
-  return {...layout, columns, top, bottom};
+  return {...layout, columns, top, bottom, manual:action === 'swap' ? true : layout.manual};
 }
 function reconcileCardOrder(groups, saved) {
   const layouts = {};
@@ -1683,17 +1697,30 @@ function reconcileCardOrder(groups, saved) {
 // END CARD COLUMN MODEL
 let displayedCardOrder = {};
 let cardColumnCount = 0;
+let cardLayoutWidth = 0;
 let cardLayoutObserver;
 function getCardColumnCount() {
   const width = document.getElementById('openTabsMissions').clientWidth;
   return Math.max(1, Math.floor((width + 12) / 292));
 }
-function layoutDomainCards(saved = displayedCardOrder) {
+function refreshCardLayoutAfterClose() {
+  const container = document.getElementById('openTabsMissions');
+  const visible = new Set([...container.querySelectorAll('.domain-card:not(.closing)')].map(card => card.dataset.groupKey));
+  const liveIds = new Set(openTabs.map(tab => tab.id));
+  domainGroups = domainGroups.filter(group => visible.has(group.domain)).map(group => ({...group,tabs:group.tabs.filter(tab => liveIds.has(tab.id))})).filter(group => group.tabs.length);
+  if (domainGroups.length) layoutDomainCards();
+}
+function measureCardHeights(container) {
+  return Object.fromEntries([...container.querySelectorAll('.domain-card:not(.closing)')].map(card =>
+    [card.dataset.groupKey, card.getBoundingClientRect().height + parseFloat(getComputedStyle(card).marginBottom || '0')]));
+}
+function layoutDomainCards(saved = displayedCardOrder, measured = false) {
   const container = document.getElementById('openTabsMissions');
   if (!container) return;
   displayedCardOrder = saved;
   cardColumnCount = getCardColumnCount();
-  const layout = buildCardColumns(domainGroups, saved, cardColumnCount);
+  cardLayoutWidth = container.clientWidth;
+  const layout = buildCardColumns(domainGroups, saved, cardColumnCount, measured ? measureCardHeights(container) : undefined);
   const cards = new Map([...container.querySelectorAll('.domain-card')].map(card => [card.dataset.groupKey, card]));
   const wrappers = [...container.querySelectorAll(':scope > .domain-card-column')];
   while (wrappers.length < cardColumnCount) {
@@ -1723,9 +1750,11 @@ function layoutDomainCards(saved = displayedCardOrder) {
   });
   wrappers.slice(cardColumnCount).forEach(column => column.remove());
   container.style.gridTemplateColumns = `repeat(${cardColumnCount}, minmax(0, 1fr))`;
+  // Establish the correct card width before measuring wrapping and expanded content.
+  if (!measured) { layoutDomainCards(saved,true); return; }
   if (!cardLayoutObserver && typeof ResizeObserver !== 'undefined') {
     cardLayoutObserver = new ResizeObserver(() => {
-      if (getCardColumnCount() !== cardColumnCount) layoutDomainCards();
+      if (getCardColumnCount() !== cardColumnCount || container.clientWidth !== cardLayoutWidth) layoutDomainCards();
     });
     cardLayoutObserver.observe(container);
   }
@@ -1739,7 +1768,7 @@ function updateCardOrder(action, source, target) {
       state = {};
     } else {
       const count = getCardColumnCount();
-      const layout = buildCardColumns(domainGroups, state, count);
+      const layout = buildCardColumns(domainGroups, state, count, measureCardHeights(document.getElementById('openTabsMissions')));
       state = {...state, layouts: {...state.layouts, [count]: changeCardColumns(layout, action, source, target)}};
     }
     state = reconcileCardOrder(domainGroups,state);
@@ -3704,6 +3733,7 @@ document.addEventListener('click', async (e) => {
     if (overflowContainer) {
       overflowContainer.style.display = 'contents';
       actionEl.remove();
+      layoutDomainCards();
     }
     return;
   }
@@ -3747,6 +3777,7 @@ document.addEventListener('click', async (e) => {
             animateCardOut(c);
           }
         });
+        refreshCardLayoutAfterClose();
       }, 200);
     }
 
