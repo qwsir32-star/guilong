@@ -313,7 +313,7 @@ async function stop() {
         from.querySelector('.card-drag-handle').dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer}));
         const hit=zone==='gap'?to.parentElement:to;
         hit.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer,clientX,clientY}));
-        hints.push({before:to.classList.contains('card-drop-before'),after:to.classList.contains('card-drop-after'),swap:to.classList.contains('card-drop-target'),line:getComputedStyle(to,'::after').height});
+        hints.push({before:to.classList.contains('card-drop-before'),after:to.classList.contains('card-drop-after'),swap:to.classList.contains('card-drop-target'),line:getComputedStyle(to,'::after').height,overflow:getComputedStyle(to).overflow});
         hit.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer,clientX,clientY}));
         await cardOrderQueue;
         return snapshot();
@@ -335,6 +335,7 @@ async function stop() {
     assert.deepEqual(result.restored,result.swapped);
     assert.ok(result.hints[0].before && result.hints[1].after && result.hints[2].before && result.hints[3].after && result.hints[4].swap);
     assert.equal(result.hints[0].line,'3px','The insertion cue is visible');
+    assert.ok(result.hints.slice(0,4).every(hint=>hint.overflow==='visible'),'Insertion cues must extend into the gap without being clipped');
     assert.equal(result.leftovers,0);assert.equal(result.animations,0);
     await evaluate(`(async()=>{document.getElementById('openTabsMissions').style.width='';await chrome.storage.local.set({domainCardOrder:{}});await renderDashboard();return true;})()`);
   });
